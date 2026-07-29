@@ -203,5 +203,29 @@ void *xrealloc(void *, unsigned);
 void xfree(void *);
 #endif
 
+/* Auxiliary memory poisoning enum for debug purposes.
+ * Keep spacing for cases where the memory gets modified by 1 before crashing.
+ * Keep the values sorted by number and always explicit. */
+
+enum poison_byte {
+  POISON_LFJOUR_PAGE = 0x21,
+  POISON_LFJOUR_ITEM = 0x23,
+  POISON_LFJOUR_NEXT = 0x25,
+
+  POISON_THREAD_SHUTDOWN = 0x47,
+
+  POISON_RESOURCE_FREE = 0xaa,
+
+  POISON_LP_NEW_PAGE = 0xb3,
+  POISON_LP_FREE_PAGE = 0xb5,
+
+  POISON_MB_FREE = 0xbc,
+
+  POISON_SLAB_NEW_ITEM = 0xc1,
+  POISON_SLAB_NEW_PAGE = 0xc3,
+  POISON_SLAB_FREE_PAGE = 0xc5,
+  POISON_SLAB_FREE_ITEM = 0xc7,
+};
+
 #endif
 

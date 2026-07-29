@@ -10,7 +10,7 @@
 #include "lib/birdlib.h"
 #include "lib/lockfree.h"
 
-#define LOCAL_DEBUG
+#undef LOCAL_DEBUG
 
 void lfuc_unlock_deferred(struct deferred_call *dc)
 {
@@ -87,6 +87,10 @@ lfjour_push_prepare(struct lfjour *j)
   if (!block)
   {
     block = alloc_page();
+#ifdef DEBUGGING
+    memset(block, POISON_LFJOUR_NEXT, page_size);
+#endif
+
     lfjour_debug("lfjour(%p)_push_prepare: allocating block %p", j, block);
     *block = (struct lfjour_block) {};
     lfjour_block_add_tail(&j->pending, block);
@@ -538,6 +542,9 @@ lfjour_cleanup_hook(void *_j)
   while (first && (first->seq <= min_seq))
   {
     j->item_done(j, first);
+#ifdef DEBUGGING
+    memset(first, POISON_LFJOUR_ITEM, j->item_size);
+#endif
 
     /* Find next journal item */
     struct lfjour_item *next = lfjour_get_next(j, first);
@@ -555,8 +562,8 @@ lfjour_cleanup_hook(void *_j)
       synchronize_rcu();
 
       /* Now we can finally drop the block */
-#ifdef LOCAL_DEBUG
-      memset(block, 0xbe, page_size);
+#ifdef DEBUGGING
+      memset(block, POISON_LFJOUR_PAGE, page_size);
 #endif
       free_page(block);
 
