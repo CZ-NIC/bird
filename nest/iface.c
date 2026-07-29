@@ -213,9 +213,6 @@ void ifa_unlink(struct ifa *a)
     return;
 
   if_unlink(a->iface);
-#if DEBUGGING
-  memset(a, 0x5b, sizeof(struct ifa));
-#endif
   mb_free(a);
 }
 

@@ -401,7 +401,7 @@ msl_alloc_from_page(mslab *s, struct msl_head *h)
       /* Take the pointer and go away */
       void *out = ((void *) h) + s->head_size + (ti->used_bits_index * 32 + pos) * s->obj_size;
 #ifdef POISON
-      memset(out, 0xcd, s->data_size);
+      memset(out, POISON_MSLAB_NEW_ITEM, s->data_size);
 #endif
       return out;
     }
@@ -623,7 +623,7 @@ msl_alloc(mslab *s)
     ASSERT_DIE(MSL_GET_HEAD(h) == h);
 
 #ifdef POISON
-    memset(h, 0xba, page_size);
+    memset(h, POISON_MSLAB_NEW_PAGE, page_size);
 #endif
 
     /* Set the thread head info */
@@ -673,7 +673,7 @@ static void
 msl_free_page(struct msl_head *h)
 {
 #ifdef POISON
-  memset(h, 0xde, page_size);
+  memset(h, POISON_MSLAB_FREE_PAGE, page_size);
 #endif
   free_page(h);
 }
@@ -987,7 +987,7 @@ msl_free(void *oo)
   msl_pti *ti = msl_get_pti(s);
 
 #ifdef POISON
-  memset(oo, 0xdb, s->data_size);
+  memset(oo, POISON_MSLAB_FREE_ITEM, s->data_size);
 #endif
 
   /* Find the position of the object in page */
