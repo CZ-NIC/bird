@@ -58,6 +58,7 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *
 
       e0.generation = new->generation + 1;
       ea_unset_attr(&e0.attrs, 0, &ea_gen_hostentry);
+      ea_unset_attr(&e0.attrs, 0, &ea_gen_hostentry_version);
 
       rte_update(dst, n, &e0, new->src);
     }
