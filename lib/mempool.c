@@ -124,6 +124,9 @@ lp_alloc_slow(linpool *m, uint size)
 
 	  /* Need to allocate a new chunk */
 	  c = alloc_page();
+#ifdef DEBUGGING
+	  memset(c, POISON_LP_NEW_PAGE, page_size);
+#endif
 
 	  m->total += LP_DATA_SIZE;
 	  c->next = NULL;
@@ -254,6 +257,9 @@ lp_restore(linpool *m, lp_state *p)
   while (c = m->current->next)
     {
       m->current->next = c->next;
+#ifdef DEBUGGING
+      memset(c, POISON_LP_FREE_PAGE, page_size);
+#endif
       free_page(c);
     }
 }

@@ -191,7 +191,7 @@ okay:
 
       void *out = ((void *) h) + s->head_size + (i * 32 + pos) * s->obj_size;
 #ifdef POISON
-      memset(out, 0xcd, s->data_size);
+      memset(out, POISON_SLAB_NEW_ITEM, s->data_size);
 #endif
       return out;
     }
@@ -211,7 +211,7 @@ no_partial:
   ASSERT_DIE(SL_GET_HEAD(h) == h);
 
 #ifdef POISON
-  memset(h, 0xba, page_size);
+  memset(h, POISON_SLAB_NEW_PAGE, page_size);
 #endif
 
   memset(h, 0, s->head_size);
@@ -252,7 +252,7 @@ sl_free(void *oo)
   ASSERT_DIE(DG_IS_LOCKED(resource_parent(&s->r)->domain));
 
 #ifdef POISON
-  memset(oo, 0xdb, s->data_size);
+  memset(oo, POISON_SLAB_FREE_ITEM, s->data_size);
 #endif
 
   uint offset = oo - ((void *) h) - s->head_size;
@@ -270,7 +270,7 @@ sl_free(void *oo)
       if (s->num_empty_heads >= MAX_EMPTY_HEADS)
       {
 #ifdef POISON
-	memset(h, 0xde, page_size);
+	memset(h, POISON_SLAB_FREE_PAGE, page_size);
 #endif
 	free_page(h);
       }

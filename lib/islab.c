@@ -770,7 +770,7 @@ isl_head_empty(struct islab *isl, struct islab_head *cur)
     isl->root = NULL;
 
 #ifdef POISON
-    memset(cur, 0xde, page_size);
+    memset(cur, POISON_ISLAB_ROOT, page_size);
 #endif
     free_page(cur);
 
@@ -788,7 +788,7 @@ isl_head_empty(struct islab *isl, struct islab_head *cur)
 
   /* Free the page */
 #ifdef POISON
-  memset(cur, 0xd1, page_size);
+  memset(cur, POISON_ISLAB_HEAD, page_size);
 #endif
   free_page(cur);
   ASSERT_DIE(--isl->heads_stored > 0);
@@ -867,7 +867,7 @@ isl_free_info(struct islab *isl, struct isl_block_info i)
   ISLOG("clear bit pg %p id %u", i.head, i.idx);
 
 #ifdef POISON
-  memset(i.ptr, 0xfa, isl->obj_size);
+  memset(i.ptr, POISON_ISLAB_ITEM, isl->obj_size);
 #endif
 
   /* Update free counts */
