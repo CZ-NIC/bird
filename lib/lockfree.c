@@ -538,13 +538,20 @@ lfjour_cleanup_hook(void *_j)
 
   u64 orig_first_seq = first->seq;
 
+  struct lfjour_item *first_to_poison = NULL, *last_to_poison = NULL;
+
   /* Now we do the actual cleanup */
   while (first && (first->seq <= min_seq))
   {
     j->item_done(j, first);
-#ifdef DEBUGGING
-    memset(first, POISON_LFJOUR_ITEM, j->item_size);
-#endif
+
+    /* Beware. We can't poison lfjour items here because there may still be
+     * readers of the "done" items. We'll poison them later after RCU synchronizes. */
+    last_to_poison = first;
+
+    if (!first_to_poison)
+      first_to_poison = first;
+
 
     /* Find next journal item */
     struct lfjour_item *next = lfjour_get_next(j, first);
@@ -567,6 +574,9 @@ lfjour_cleanup_hook(void *_j)
 #endif
       free_page(block);
 
+      /* Do not poison items from a freed page */
+      first_to_poison = last_to_poison = NULL;
+
       /* If no more blocks are remaining, we shall reset
        * the sequence numbers */
 
@@ -583,6 +593,18 @@ lfjour_cleanup_hook(void *_j)
     /* And now move on to the next item */
     first = next;
   }
+
+  /* Wait for possible pending readers of the partially done block */
+  synchronize_rcu();
+
+  /* Poison items from a page which is not yet done completely. */
+#ifdef DEBUGGING
+  if (first_to_poison)
+  {
+    ASSERT_DIE(PAGE_HEAD(first_to_poison) == PAGE_HEAD(last_to_poison));
+    memset(first_to_poison, POISON_LFJOUR_ITEM, (last_to_poison - first_to_poison) + j->item_size);
+  }
+#endif
 
   lfjour_cleanup_done(j);
 
