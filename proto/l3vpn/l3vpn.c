@@ -224,6 +224,7 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, const net_addr *n0, rte *ne
 
     /* Hostentry also validn't */
     ea_unset_attr(&new->attrs, 0, &ea_gen_hostentry);
+    ea_unset_attr(&new->attrs, 0, &ea_gen_hostentry_version);
 
     if (export)
     {
