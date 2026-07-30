@@ -9,10 +9,9 @@ RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN dpkg --add-architecture armhf
 RUN dpkg --add-architecture ppc64el
 RUN dpkg --add-architecture riscv64
-RUN dpkg --add-architecture s390x
 RUN find /etc/apt/sourc* -type f -exec sed -i '/Components: /a\
 Architectures: amd64' '{}' +
-RUN find /etc/apt/sourc* -type f -exec sed 's#URIs: .*#URIs: http://ports.ubuntu.com/ubuntu-ports/#;s#Architectures: amd64#Architectures: armhf,ppc64el,riscv64,s390x#' '{}' + > /etc/apt/sources.list.d/crossbuild.sources
+RUN find /etc/apt/sourc* -type f -exec sed 's#URIs: .*#URIs: http://ports.ubuntu.com/ubuntu-ports/#;s#Architectures: amd64#Architectures: armhf,ppc64el,riscv64#' '{}' + > /etc/apt/sources.list.d/crossbuild.sources
 RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN apt-get -y update
 RUN apt-get -y upgrade
@@ -34,9 +33,6 @@ RUN apt-get -y --no-install-recommends install \
 	crossbuild-essential-riscv64 \
 	libreadline-dev:riscv64 \
 	ncurses-dev:riscv64 \
-	crossbuild-essential-s390x \
-	libreadline-dev:s390x \
-	ncurses-dev:s390x \
 	qemu-user \
 	qemu-user-binfmt \
 	binfmt-support \
