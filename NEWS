@@ -1,3 +1,16 @@
+Version 3.1.8 (2026-07-30)
+  o BGP: Fix stack buffer overflow in Flowspec NLRI decoder
+  o BGP: Minor improvements in Flowspec parsing
+  o BGP: Fix minor issues with send hold timer
+  o Fix null byte handling in authentication keys
+  o Pipe, L3VPN: Fix hostentry stripping
+  o Filter: Fix zero arg handling
+  o Logging: Fix use-after-free on failed rotation
+  o CLI: Fix crashes in show route
+  o Allocator: Pre-fill hot pages when entering RCU critical section
+  o Fix obstacle cleanup
+  o Update bird-users mailing list links
+
 Version 3.1.7 (2026-06-09)
   o BGP: Fix parsing labelled NLRIs with no next hop
   o BGP: Fix cork behavior in collision with graceful restart
