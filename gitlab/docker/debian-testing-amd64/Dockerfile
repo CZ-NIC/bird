@@ -9,7 +9,6 @@ RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN dpkg --add-architecture arm64
 RUN dpkg --add-architecture armhf
 RUN dpkg --add-architecture riscv64
-RUN dpkg --add-architecture s390x
 RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN apt-get -y update
 RUN apt-get -y upgrade
@@ -30,9 +29,6 @@ RUN apt-get -y --no-install-recommends install \
 	crossbuild-essential-riscv64 \
 	libreadline-dev:riscv64 \
 	ncurses-dev:riscv64 \
-	crossbuild-essential-s390x \
-	libreadline-dev:s390x \
-	ncurses-dev:s390x \
 	qemu-user \
 	qemu-user-binfmt \
 	binfmt-support \
