@@ -104,9 +104,9 @@ distros:
   # Debian from oldoldstable up to testing
   {% for num, codename, crossarch in (
     (11, "bullseye", []),
-    (12, "bookworm", ["mips64el", "s390x"]),
-    (13, "trixie", ["arm64", "armel", "armhf", "riscv64", "s390x"]),
-    ("testing", "testing", ["arm64", "armhf", "riscv64", "s390x"])
+    (12, "bookworm", ["mips64el"]),
+    (13, "trixie", ["arm64", "armel", "armhf", "riscv64"]),
+    ("testing", "testing", ["arm64", "armhf", "riscv64"])
     ) -%}
   {% for arch in ('amd64', 'i386') -%}
   - name: debian-{{num}}-{{arch}}
@@ -124,16 +124,17 @@ distros:
 
 # These debian don't crossbuild. TODO fix that.
 # 12 -> ["arm64", "armel", "armhf"] ->  Error 127 from `make check` probably because qemu-user is somehow botched
+# 12, 13, testing -> s390x -> does not install, impossible to replicate locally
 
   # Last 7 years of Ubuntu LTS
   {% for num, crossarch in (
       ('18.04', []),
       ('20.04', []),
       ('22.04', []),
-      ('24.04', ["arm64", "armhf", "ppc64el", "riscv64", "s390x"]),
-      ('25.04', ["armhf", "ppc64el", "riscv64", "s390x"]),
-      ('25.10', ["arm64", "armhf", "ppc64el", "riscv64", "s390x"]),
-      ('26.04', ["arm64", "armhf", "ppc64el", "riscv64", "s390x"]),
+      ('24.04', ["arm64", "armhf", "ppc64el", "riscv64"]),
+      ('25.04', ["armhf", "ppc64el", "riscv64"]),
+      ('25.10', ["arm64", "armhf", "ppc64el", "riscv64"]),
+      ('26.04', ["arm64", "armhf", "ppc64el", "riscv64"]),
       ) -%}
   - name: ubuntu-{{ num }}-amd64
     type: deb
@@ -150,6 +151,7 @@ distros:
 #	  -> ["s390x"] doesn't pack -> debugedit --build-id --build-id-seed=bird2/2.18\+branch.mq.nightly.d0b6b85ebc17-cznic.1\~jammy debian/bird2/usr/sbin/birdc died with signal 11
 #	  -> ["riscv64"] fails on dynamic linking libatomic.so.1 when running tests
 # '25.04' -> ["arm64"] fails in `make check` with Timeout expired on `rt-fib_test`
+# 24.04 through 26.04 -> s390x -> does not install, impossible to replicate locally
 
 birdlab:
   - name: openbsd-76
