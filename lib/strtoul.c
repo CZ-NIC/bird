@@ -56,6 +56,7 @@ bstrtoul16(const char *str, char **end)
     }
   }
 
+  *end = (char *) &(str[16]);	/* Overflow position */
   errno = ERANGE;
   return UINT64_MAX;
 }
