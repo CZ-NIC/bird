@@ -6,8 +6,8 @@
 FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
-RUN find /etc/apt/sourc* -type f -exec sed -i 's/^deb /deb [arch=amd64] /' '{}' +
-RUN find /etc/apt/sourc* -type f -exec sed -r '/^deb /{s#arch=amd64#arch=#;s#https?://[^ ]+#http://ports.ubuntu.com/ubuntu-ports/#}' '{}' + > /etc/apt/sources.list.d/crossbuild.list
+# RUN find /etc/apt/sourc* -type f -exec sed -i 's/^deb /deb [arch=amd64] /' '{}' +
+# RUN find /etc/apt/sourc* -type f -exec sed -r '/^deb /{s#arch=amd64#arch=#;s#https?://[^ ]+#http://ports.ubuntu.com/ubuntu-ports/#}' '{}' + > /etc/apt/sources.list.d/crossbuild.list
 RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN apt-get -y update
 RUN apt-get -y upgrade

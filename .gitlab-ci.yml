@@ -1120,15 +1120,6 @@ build-debian-12-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:debian-12-amd64
 
-crossbuild-mips64el-debian-12-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-12-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-12-amd64
-  variables:
-    CROSSBUILD_ARCH: mips64el
-
 
 build-debian-12-i386:
   <<: *build-docker-linux-amd64
@@ -1726,16 +1717,6 @@ pkg-debian-12-amd64:
       artifacts: false
     - job: build-release
   image: registry.nic.cz/labs/bird:debian-12-amd64
-
-crosspkg-mips64el-debian-12-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: crossbuild-mips64el-debian-12-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-12-amd64
-  variables:
-    CROSSBUILD_ARCH: mips64el
 
 
 pkg-debian-12-i386:
@@ -2348,13 +2329,6 @@ install-debian-12-amd64:
     - job: pkg-debian-12-amd64
   image: registry.nic.cz/labs/bird:debian-12-amd64
   variables:
-crossinstall-mips64el-debian-12-amd64:
-  <<: *install-deb
-  needs:
-    - job: crosspkg-mips64el-debian-12-amd64
-  image: registry.nic.cz/labs/bird:debian-12-amd64
-  variables:
-    CROSSBUILD_ARCH: mips64el
 
 install-debian-12-i386:
   <<: *install-deb

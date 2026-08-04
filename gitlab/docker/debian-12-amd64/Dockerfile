@@ -6,10 +6,13 @@
 FROM amd64/debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
-RUN dpkg --add-architecture mips64el
+# RUN dpkg --add-architecture mips64el
 RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN apt-get -y update
 RUN apt-get -y upgrade
+	# crossbuild-essential-mips64el \
+	# libreadline-dev:mips64el \
+	# ncurses-dev:mips64el \
 RUN apt-get -y --no-install-recommends install \
 	build-essential \
 	flex \
@@ -18,9 +21,6 @@ RUN apt-get -y --no-install-recommends install \
 	ncurses-dev \
 	libreadline-dev \
 	libssh-gcrypt-dev \
-	crossbuild-essential-mips64el \
-	libreadline-dev:mips64el \
-	ncurses-dev:mips64el \
 	qemu-user \
 	qemu-user-binfmt \
 	binfmt-support \
