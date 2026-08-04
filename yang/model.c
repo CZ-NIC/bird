@@ -62,31 +62,31 @@ static struct container_node_1 schema_tree_root;
 static struct leaf_node show_mem_page_rcu_fail = {
    .type = SNT_LEAF,
    .parent = (struct schema_node *) &show_mem_pages,
-   .sid = 60021,
+   .sid = 60014,
 };
 
 static struct leaf_node show_mem_page_cold = {
    .type = SNT_LEAF,
    .parent = (struct schema_node *) &show_mem_pages,
-   .sid = 60019,
+   .sid = 60013,
 };
 
 static struct leaf_node show_mem_page_hot = {
    .type = SNT_LEAF,
    .parent = (struct schema_node *) &show_mem_pages,
-   .sid = 60017,
+   .sid = 60014,
 };
 
 static struct leaf_node show_mem_page_active = {
    .type = SNT_LEAF,
    .parent = (struct schema_node *) &show_mem_pages,
-   .sid = 60016,
+   .sid = 60012,
 };
 
 static struct container_node_4 show_mem_pages = {
    .type = SNT_CONTAINER,
    .parent = (struct schema_node *) &show_mem_cont,
-   .sid = 60015,
+   .sid = 60011,
    .children = {
       .length = 4,
       .nodes = {
@@ -102,19 +102,19 @@ static struct leaf_node show_mem_total_leafs[2] = {
    {
       .type = SNT_LEAF,
       .parent = (struct schema_node *) &show_mem_total,
-      .sid = 1,
+      .sid = 60023,
    },
    {
       .type = SNT_LEAF,
       .parent = (struct schema_node *) &show_mem_total,
-      .sid = 2,
+      .sid = 60024,
    },
 };
    
 static struct container_node_2 show_mem_total = {
    .type = SNT_CONTAINER,
    .parent = (struct schema_node *) &show_mem_cont,
-   .sid = 3,
+   .sid = 60022,
    .children = {
       .length = 2,
       .nodes = {
@@ -138,7 +138,7 @@ static struct container_node_2 show_mem_total = {
    }
 
 static struct leaf_node show_mem_config_leafs[2] = {
-   MEMORY_INFO_LINE(&show_mem_config, 1, 2),
+   MEMORY_INFO_LINE(&show_mem_config, 60009, 60010),
 };
 
 static struct container_node_2 show_mem_config = {
@@ -146,7 +146,7 @@ static struct container_node_2 show_mem_config = {
    .parent = (struct schema_node *) &show_mem_cont,
    .sid = 1,
    .children = {
-      .length = 2,
+      .length = 60008,
       .nodes = { 
          (struct schema_node *) &show_mem_config_leafs[0], 
          (struct schema_node *) &show_mem_config_leafs[1], 
@@ -155,13 +155,13 @@ static struct container_node_2 show_mem_config = {
 };
 
 static struct leaf_node show_mem_proto_leafs[2] = {
-   MEMORY_INFO_LINE(&show_mem_proto, 1, 2),
+   MEMORY_INFO_LINE(&show_mem_proto, 60017, 60018),
 };
 
 static struct container_node_2 show_mem_proto = {
    .type = SNT_CONTAINER,
    .parent = (struct schema_node *) &show_mem_cont,
-   .sid = 1,
+   .sid = 60016,
    .children = {
       .length = 2,
       .nodes = { 
@@ -172,13 +172,13 @@ static struct container_node_2 show_mem_proto = {
 };
 
 static struct leaf_node show_mem_attrs_leafs[2] = {
-   MEMORY_INFO_LINE(&show_mem_attrs, 1, 2),
+   MEMORY_INFO_LINE(&show_mem_attrs, 60006, 60007),
 };
 
 static struct container_node_2 show_mem_attrs = {
    .type = SNT_CONTAINER,
    .parent = (struct schema_node *) &show_mem_cont,
-   .sid = 1,
+   .sid = 60005,
    .children = {
       .length = 2,
       .nodes = {
@@ -189,13 +189,13 @@ static struct container_node_2 show_mem_attrs = {
 };
 
 static struct leaf_node show_mem_table_leafs[2] = {
-   MEMORY_INFO_LINE(&show_mem_table, 1, 2),
+   MEMORY_INFO_LINE(&show_mem_table, 60020, 60021),
 };
 
 static struct container_node_2 show_mem_table = {
    .type = SNT_CONTAINER,
    .parent = (struct schema_node *) &show_mem_cont,
-   .sid = 1,
+   .sid = 60019,
    .children = {
       .length = 2,
       .nodes = { 
@@ -236,14 +236,14 @@ static struct container_node_1 rpc_show_mem_out = {
 static struct container_node rpc_show_mem_in = {
    .type = SNT_INPUT,
    .parent = (struct schema_node *) &rpc_show_mem,
-   .sid = 60001,
+   .sid = 60002,
    .children = { .length = 0, .nodes = {} },
 };
 
 static struct container_node_2 rpc_show_mem = {
    .type = SNT_RPC,
    .parent = (struct schema_node *) &schema_tree_root,
-   .sid = 60002,
+   .sid = 60001,
    .children = {
       .length = 2,
       .nodes = {
