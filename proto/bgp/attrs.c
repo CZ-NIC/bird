@@ -1253,11 +1253,30 @@ bgp_attr_name(uint code)
  *	Attribute export
  */
 
+/* List of non-BGP attributes that are exported to bgp_bucket */
+static const u16 bgp_attr_export_list[] = { };
+
+static inline bool
+bgp_alien_attr_wanted(u16 id)
+{
+  for (int i = 0; i < (int)ARRAY_SIZE(bgp_attr_export_list); i++)
+    if (id == bgp_attr_export_list[i])
+      return true;
+
+  return false;
+}
+
 static inline void
 bgp_export_attr(struct bgp_export_state *s, eattr *a, ea_list *to)
 {
   if (EA_PROTO(a->id) != PROTOCOL_BGP)
+  {
+    /* We keep some non-BGP attributes for later */
+    if (bgp_alien_attr_wanted(a->id))
+      to->attrs[to->count++] = *a;
+
     return;
+  }
 
   uint code = EA_ID(a->id);
 
@@ -1338,10 +1357,7 @@ static inline int
 bgp_encode_attr(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
 {
   if (EA_PROTO(a->id) != PROTOCOL_BGP)
-    if (s->ignore_non_bgp_attrs)
-      return 0;
-    else
-      bug("Tried to encode a non-BGP attribute");
+    return 0;
 
   uint code = EA_ID(a->id);
 
