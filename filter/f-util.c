@@ -277,6 +277,9 @@ ca_lookup(pool *p, const char *name, int f_type)
     case T_IP:
       ea_type = EAF_TYPE_IP_ADDRESS;
       break;
+    case T_MAC:
+      ea_type = EAF_TYPE_MAC_ADDRESS;
+      break;
     case T_QUAD:
       ea_type = EAF_TYPE_ROUTER_ID;
       break;

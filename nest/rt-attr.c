@@ -1008,6 +1008,9 @@ ea_show(struct cli *c, const eattr *e)
 	case EAF_TYPE_IP_ADDRESS:
 	  bsprintf(pos, "%I", *(ip_addr *) ad->data);
 	  break;
+	case EAF_TYPE_MAC_ADDRESS:
+	  bsprintf(pos, "%6b", ad->data);
+	  break;
 	case EAF_TYPE_ROUTER_ID:
 	  bsprintf(pos, "%R", e->u.data);
 	  break;

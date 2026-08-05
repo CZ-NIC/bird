@@ -886,6 +886,9 @@
       case EAF_TYPE_IP_ADDRESS:
 	RESULT_(T_IP, ip, *((ip_addr *) e->u.ptr->data));
 	break;
+      case EAF_TYPE_MAC_ADDRESS:
+	RESULT_(T_MAC, mac, *((mac_addr *) e->u.ptr->data));
+	break;
       case EAF_TYPE_AS_PATH:
 	RESULT_(T_PATH, ad, e->u.ptr);
 	break;
@@ -924,6 +927,7 @@
     FID_INTERPRET_BODY;
     {
       struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
+      struct adata *ad = NULL;
 
       l->next = NULL;
       l->flags = EALF_SORTED;
@@ -941,11 +945,15 @@
 	l->attrs[0].u.data = v1.val.i;
 	break;
 
-      case EAF_TYPE_IP_ADDRESS:;
-	int len = sizeof(ip_addr);
-	struct adata *ad = lp_alloc(fs->pool, sizeof(struct adata) + len);
-	ad->length = len;
-	(* (ip_addr *) ad->data) = v1.val.ip;
+      case EAF_TYPE_IP_ADDRESS:
+	ad = lp_alloc_adata(fs->pool, sizeof(ip_addr));
+	memcpy(ad->data, &v1.val.ip, sizeof(ip_addr));
+	l->attrs[0].u.ptr = ad;
+	break;
+
+      case EAF_TYPE_MAC_ADDRESS:
+	ad = lp_alloc_adata(fs->pool, sizeof(mac_addr));
+	memcpy(ad->data, &v1.val.mac, sizeof(mac_addr));
 	l->attrs[0].u.ptr = ad;
 	break;
 

@@ -557,6 +557,7 @@ const char *ea_custom_name(uint ea);
 #define EAF_TYPE_IP_ADDRESS 0x04	/* IP address */
 #define EAF_TYPE_ROUTER_ID 0x05		/* Router ID (4-octet positive integer) */
 #define EAF_TYPE_AS_PATH 0x06		/* BGP AS path (encoding per RFC 1771:4.3) */
+#define EAF_TYPE_MAC_ADDRESS 0x08	/* Ethernet MAC address */
 #define EAF_TYPE_BITFIELD 0x09		/* 32-bit embedded bitfield */
 #define EAF_TYPE_INT_SET 0x0a		/* Set of u32's (e.g., a community list) */
 #define EAF_TYPE_EC_SET 0x0e		/* Set of pairs of u32's - ext. community list */
@@ -564,7 +565,6 @@ const char *ea_custom_name(uint ea);
 #define EAF_TYPE_IFACE 0x14		/* Interface pointer stored in adata */
 #define EAF_TYPE_STRING 0x16		/* Text string */
 #define EAF_EMBEDDED 0x01		/* Data stored in eattr.u.data (part of type spec) */
-#define EAF_VAR_LENGTH 0x02		/* Attribute length is variable (part of type spec) */
 
 typedef struct adata {
   uint length;				/* Length of data */
