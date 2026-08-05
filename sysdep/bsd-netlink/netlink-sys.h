@@ -11,6 +11,7 @@
 
 #include <netlink/netlink.h>
 #include <netlink/netlink_route.h>
+#include <net/if_arp.h>
 
 #ifndef	AF_MPLS
 #define	AF_MPLS	39

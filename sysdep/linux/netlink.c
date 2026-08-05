@@ -437,6 +437,7 @@ static struct nl_want_attrs nlmsgerr_attr_want[BIRD_NLMSGERR_MAX] = {
 #define BIRD_IFLA_MAX (IFLA_AF_SPEC+1)
 
 static struct nl_want_attrs ifla_attr_want[BIRD_IFLA_MAX] = {
+  [IFLA_ADDRESS]  = { 1, 0, 0 },
   [IFLA_IFNAME]	  = { 1, 0, 0 },
   [IFLA_MTU]	  = { 1, 1, sizeof(u32) },
   [IFLA_MASTER]	  = { 1, 1, sizeof(u32) },
@@ -1102,6 +1103,10 @@ nl_parse_link(struct nlmsghdr *h, int scan)
   name = RTA_DATA(a[IFLA_IFNAME]);
   mtu = rta_get_u32(a[IFLA_MTU]);
 
+  /* We silently ignore non-ethernet link-layer addresses */
+  if (a[IFLA_ADDRESS] && (i->ifi_type == ARPHRD_ETHER) && (RTA_PAYLOAD(a[IFLA_ADDRESS]) == sizeof(mac_addr)))
+    f.lladdr = rta_get_mac(a[IFLA_ADDRESS]);
+
   if (a[IFLA_MASTER])
     master = rta_get_u32(a[IFLA_MASTER]);
 
@@ -1451,7 +1456,8 @@ kif_do_scan(struct kif_proto *p UNUSED)
 	.mtu = i->mtu,
 	.index = i->index,
 	.master_index = i->master_index,
-	.master = if_find_by_index(i->master_index)
+	.master = if_find_by_index(i->master_index),
+	.lladdr = i->lladdr,
       };
 
       if (f.master != i->master)

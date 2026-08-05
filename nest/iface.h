@@ -41,6 +41,7 @@ struct iface {
   struct ifa *addr4;			/* Primary address for IPv4 */
   struct ifa *addr6;			/* Primary address for IPv6 */
   struct ifa *llv6;			/* Primary link-local address for IPv6 */
+  mac_addr lladdr;			/* Ethernet link-layer address, if applicable */
   ip4_addr sysdep;			/* Arbitrary IPv4 address for internal sysdep use */
   list neighbors;			/* All neighbors on this interface */
   struct rta *attrs;
