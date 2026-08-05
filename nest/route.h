@@ -692,11 +692,11 @@ ea_set_attr_u32(ea_list **to, struct linpool *pool, uint id, uint flags, uint ty
 { ea_set_attr(to, pool, id, flags, type, (uintptr_t) val); }
 
 static inline void
-ea_set_attr_ptr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, struct adata *val)
+ea_set_attr_ptr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, const struct adata *val)
 { ea_set_attr(to, pool, id, flags, type, (uintptr_t) val); }
 
 static inline void
-ea_set_attr_data(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, void *data, uint len)
+ea_set_attr_data(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, const void *data, uint len)
 {
   struct adata *a = lp_alloc_adata(pool, len);
   memcpy(a->data, data, len);
