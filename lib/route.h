@@ -386,6 +386,16 @@ static inline eattr *ea_find_by_name(ea_list *l, const char *name)
     (ea ? ea->u.ptr : &null_adata); \
     })
 
+#define ea_get_val(ea, id, type, def)			\
+  ({							\
+    type _v = (def);					\
+    eattr *_e = ea_find((ea), (id));			\
+    if (_e && (_e->u.ptr->length == sizeof(type)))	\
+      memcpy(&_v, _e->u.ptr->data, sizeof(type));	\
+    _v;							\
+  })
+
+
 eattr *ea_walk(struct ea_walk_state *s, uint id, uint max);
 int ea_same(ea_list *x, ea_list *y);	/* Test whether two ea_lists are identical */
 uint ea_hash(ea_list *e);		/* Calculate attributes hash value */
