@@ -621,6 +621,15 @@ uint ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
 void ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
+#define ea_get_val(ea, id, type, def)		   \
+  ({						   \
+    type _v = (def);				   \
+    eattr *_e = ea_find((ea), (id));		   \
+    if (_e && (_e->u.ptr->length == sizeof(type))) \
+      memcpy(&_v, _e->u.ptr->data, sizeof(type));  \
+    _v;						   \
+  })
+
 #define ea_normalize(ea) do { \
   if (ea->next) { \
     ea_list *t = alloca(ea_scan(ea)); \
