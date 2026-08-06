@@ -6,14 +6,14 @@
 FROM amd64/debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
-# RUN dpkg --add-architecture mips64el
+RUN dpkg --add-architecture mips64el
 RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN apt-get -y update
 RUN apt-get -y upgrade
-	# crossbuild-essential-mips64el \
-	# libreadline-dev:mips64el \
-	# ncurses-dev:mips64el \
-RUN apt-get -y --no-install-recommends install \
+
+RUN apt show -a linux-libc-dev:mips64el libc6-dev:mips64el
+
+RUN apt-get -y -f --no-install-recommends install \
 	build-essential \
 	flex \
 	bison \
@@ -21,6 +21,11 @@ RUN apt-get -y --no-install-recommends install \
 	ncurses-dev \
 	libreadline-dev \
 	libssh-gcrypt-dev \
+	linux-libc-dev=6.1.176-1 \
+	linux-libc-dev:mips64el=6.1.176-1 \
+	crossbuild-essential-mips64el \
+	libreadline-dev:mips64el \
+	ncurses-dev:mips64el \
 	qemu-user \
 	qemu-user-binfmt \
 	binfmt-support \
@@ -29,7 +34,7 @@ RUN apt-get -y --no-install-recommends install \
 	opensp \
 	docbook-xsl \
 	xsltproc
-RUN apt-get -y --no-install-recommends install \
+RUN apt-get -V -y --no-install-recommends install \
 	git \
 	dpkg-dev \
 	debhelper \

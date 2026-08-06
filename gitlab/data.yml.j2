@@ -104,7 +104,7 @@ distros:
   # Debian from oldoldstable up to testing
   {% for num, codename, crossarch in (
     (11, "bullseye", []),
-    (12, "bookworm", []),
+    (12, "bookworm", ["mips64el"]),
     (13, "trixie", ["arm64", "armel", "armhf", "riscv64"]),
     ("testing", "testing", ["arm64", "armhf", "riscv64"])
     ) -%}
