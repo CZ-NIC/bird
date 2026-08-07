@@ -4651,6 +4651,13 @@ announce local networks.
 	consideration. Routes for directly connected networks are generated only
 	if link up is reported and they are withdrawn when link disappears
 	(e.g., an ethernet cable is unplugged). Default value is no.
+
+	<tag><label id="direct-host">host <m/switch/</tag>
+	If enabled, instead of the route for the whole segment, a host route is
+	created with the prefix length set to maximum. Such a route should never
+	end up in the kernel forwarding table, and the user should take proper
+	filtering actions to keep it safely away. Experimental feature.
+	Default: no.
 </descrip>
 
 <p>Direct device routes don't contain any specific attributes.

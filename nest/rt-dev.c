@@ -61,6 +61,23 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
     net_fill_ip6_sadr(net, net6_prefix(&ad->prefix), net6_pxlen(&ad->prefix), IP6_NONE, 0);
   }
 
+  /* For host routes, replace regular prefix with the actual address */
+  if (cf->host_routes)
+  {
+    if (ad->prefix.type == NET_IP4)
+    {
+      net = alloca(sizeof(net_addr_ip4));
+      net_fill_ip4(net, ipa_to_ip4(ad->ip), IP4_MAX_PREFIX_LENGTH);
+    }
+    else if (ad->prefix.type == NET_IP6)
+    {
+      net = alloca(sizeof(net_addr_ip6));
+      net_fill_ip6(net, ipa_to_ip6(ad->ip), IP6_MAX_PREFIX_LENGTH);
+    }
+    else
+      return;
+  }
+
   if (flags & IF_CHANGE_DOWN)
     {
       DBG("dev_if_notify: %s:%I going down\n", ad->iface->name, ad->ip);
