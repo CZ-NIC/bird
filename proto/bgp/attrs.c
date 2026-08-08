@@ -1254,7 +1254,7 @@ bgp_attr_name(uint code)
  */
 
 /* List of non-BGP attributes that are exported to bgp_bucket */
-static const u16 bgp_attr_export_list[] = { };
+static const u16 bgp_attr_export_list[] = { EA_EVPN_ESI };
 
 static inline bool
 bgp_alien_attr_wanted(u16 id)

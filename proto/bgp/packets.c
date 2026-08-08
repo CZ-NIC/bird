@@ -2356,7 +2356,7 @@ bgp_decode_evpn_ead(struct bgp_parse_state *s, net_addr_evpn *net, byte *pos, ui
 }
 
 static uint
-bgp_encode_evpn_mac(struct bgp_write_state *s UNUSED, const net_addr_evpn *net, byte *buf, uint size)
+bgp_encode_evpn_mac(struct bgp_write_state *s, const net_addr_evpn *net, ea_list *ea, byte *buf, uint size)
 {
   byte *pos = buf;
 
@@ -2364,8 +2364,11 @@ bgp_encode_evpn_mac(struct bgp_write_state *s UNUSED, const net_addr_evpn *net, 
   put_rd(pos, net->rd);
   ADVANCE(pos, size, 8);
 
-  /* Encode ethernet segment ID - XXX */
-  memset(pos, 0, 10);
+  /* Find ethernet segment ID */
+  evpn_esi esi = ea_get_val(ea, EA_EVPN_ESI, evpn_esi, EVPN_ESI_NONE);
+
+  /* Encode ethernet segment ID */
+  memcpy(pos, &esi, 10);
   ADVANCE(pos, size, 10);
 
   /* Encode ethernet tag ID */
@@ -2400,7 +2403,7 @@ bgp_encode_evpn_mac(struct bgp_write_state *s UNUSED, const net_addr_evpn *net, 
 }
 
 static void
-bgp_decode_evpn_mac(struct bgp_parse_state *s, net_addr_evpn *net, byte *pos, uint len)
+bgp_decode_evpn_mac(struct bgp_parse_state *s, net_addr_evpn *net, ea_list **ea, byte *pos, uint len)
 {
   if (len < (8+10+4+7+1))
     bgp_parse_error(s, 1);
@@ -2409,10 +2412,13 @@ bgp_decode_evpn_mac(struct bgp_parse_state *s, net_addr_evpn *net, byte *pos, ui
   vpn_rd rd = get_rd(pos);
   ADVANCE(pos, len, 8);
 
-  /* Decode ethernet segment ID - XXX */
+  /* Decode ethernet segment ID */
   evpn_esi esi;
   memcpy(&esi, pos, 10);
   ADVANCE(pos, len, 10);
+
+  if (ea && evpn_esi_nonzero(esi))
+    ea_set_attr_data(ea, s->pool, EA_EVPN_ESI, 0, EAF_TYPE_OPAQUE, &esi, 10);
 
   /* Decode ethernet tag ID */
   u32 tag = get_u32(pos);
@@ -2585,6 +2591,7 @@ bgp_encode_nlri_evpn(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
   {
     struct bgp_prefix *px = HEAD(buck->prefixes);
     const net_addr_evpn *net = (void *) px->net;
+    ea_list *ea = buck->eattrs;
 
     /* Encode path ID */
     if (s->add_path)
@@ -2602,7 +2609,7 @@ bgp_encode_nlri_evpn(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     switch (net->subtype)
     {
     case NET_EVPN_EAD:	rlen = bgp_encode_evpn_ead(s, net, pos, size); break;
-    case NET_EVPN_MAC:	rlen = bgp_encode_evpn_mac(s, net, pos, size); break;
+    case NET_EVPN_MAC:	rlen = bgp_encode_evpn_mac(s, net, ea, pos, size); break;
     case NET_EVPN_IMET:	rlen = bgp_encode_evpn_imet(s, net, pos, size); break;
     case NET_EVPN_ES:	rlen = bgp_encode_evpn_es(s, net, pos, size); break;
     default:		rlen = bgp_encode_evpn_unknown(s, net, pos, size); break;
@@ -2637,6 +2644,7 @@ bgp_decode_nlri_evpn(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
   while (len)
   {
     net_addr_evpn *net = (void *) net_buf;
+    ea_list **ea = a ? &(a->eattrs) : NULL;
     u32 path_id = 0;
 
     s->mpls_labels = NULL;
@@ -2669,7 +2677,7 @@ bgp_decode_nlri_evpn(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     switch (type)
     {
     case NET_EVPN_EAD:	bgp_decode_evpn_ead(s, net, pos, rlen); break;
-    case NET_EVPN_MAC:	bgp_decode_evpn_mac(s, net, pos, rlen); break;
+    case NET_EVPN_MAC:	bgp_decode_evpn_mac(s, net, ea, pos, rlen); break;
     case NET_EVPN_IMET:	bgp_decode_evpn_imet(s, net, pos, rlen); break;
     case NET_EVPN_ES:	bgp_decode_evpn_es(s, net, pos, rlen); break;
     default:		bgp_decode_evpn_unknown(s, net, type, pos, rlen); break;

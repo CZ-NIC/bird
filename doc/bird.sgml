@@ -1820,10 +1820,12 @@ in the foot).
 	(<cf/.ip/), EVPN tag (<cf/.evpn_tag/), Ethernet Segment Identifier
 	(<cf/.evpn_esi/), router IP (<cf/.router_ip/). Note that only fields
 	that are a part of primary key for given route subtype can be accessed
-	by these operators (e.g. <cf/.evpn_esi/ can be used for <cf/NET_EVPN_ES/,
-	but not for <cf/NET_EVPN_MAC/ or other types), remaining attributes are
-	stored outside prefix as other route attributes. See <ref id="evpn-routes"
-	name="EVPN routes"> for description of specific subtypes.
+	by these operators (e.g. <cf/.evpn_esi/ can be used for
+	<cf/NET_EVPN_ES/, but not for <cf/NET_EVPN_MAC/, where ESI is stored
+	in <ref id="rta-evpn-esi" name="evpn_esi"> attribute), remaining
+	attributes are stored outside prefix as other route attributes.
+	See <ref id="evpn-routes" name="EVPN routes"> for description of
+	specific subtypes.
 
 	<cf/NET_NEIGHBOR/ holds a single IP address and an interface index.
 	The IP address can be accessed by operator <cf/.ip/, while the access
@@ -2330,6 +2332,13 @@ Common route attributes are:
 	aggregation than just one based on next hops. When routes have different
 	value of this attribute, they will not be aggregated under one local
 	label even if they have the same next hops.
+
+	<tag><label id="rta-evpn-esi"><m/bytestring/ evpn_esi</tag>
+	EVPN Ethernet Segment Identifier (ESI). Some <ref id="evpn-routes"
+	name="EVPN route"> types (e.g. EVPN EAD routes) have ESI as a part
+	of <ref id="type-prefix" name="primary key">. Others (e.g. EVPN MAC
+	routes) have ESI as this optional route attribute. BIRD does not
+	currently use this attribute, but can pass it as a BGP route reflector.
 </descrip>
 
 <p>Protocol-specific route attributes are described in the corresponding

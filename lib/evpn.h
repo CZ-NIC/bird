@@ -28,10 +28,29 @@ enum evpn_esi_type {
 #define EVPN_VNI_MAX	0x00ffffff
 #define EVPN_VID_MAX	0x00000fff
 
+
+/*
+ *	EVPN ESI
+ */
+
 typedef struct evpn_esi {
   u8 type;
   u8 value[9];
 } evpn_esi;
+
+#define EVPN_ESI_NONE ((evpn_esi){ })
+
+static inline bool evpn_esi_equal(evpn_esi a, evpn_esi b)
+{ return !memcmp(&a, &b, sizeof(evpn_esi)); }
+
+static inline bool evpn_esi_zero(evpn_esi a)
+{ return !memcmp(&a, &EVPN_ESI_NONE, sizeof(evpn_esi)); }
+
+static inline bool evpn_esi_nonzero(evpn_esi a)
+{ return !evpn_esi_zero(a); }
+
+static inline int evpn_esi_compare(evpn_esi a, evpn_esi b)
+{ return memcmp(&a, &b, sizeof(evpn_esi)); }
 
 
 /*
