@@ -1724,7 +1724,7 @@ bgp_get_withdraw_bucket(struct bgp_channel *c)
 {
   if (!c->withdraw_bucket)
   {
-    c->withdraw_bucket = mb_allocz(c->pool, sizeof(struct bgp_bucket));
+    c->withdraw_bucket = mb_allocz(c->pool, sizeof(struct bgp_bucket) + sizeof(ea_list));
     init_list(&c->withdraw_bucket->prefixes);
   }
 
