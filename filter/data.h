@@ -111,22 +111,6 @@ val_is_undefined(struct f_val v)
     (v.val.ad == &null_adata);
 }
 
-static inline struct f_val
-val_empty(enum f_type t)
-{
-  switch (t)
-  {
-  case T_PATH:
-  case T_CLIST:
-  case T_ECLIST:
-  case T_LCLIST:
-    return (struct f_val) { .type = t, .val.ad = &null_adata };
-
-  default:
-    return (struct f_val) { };
-  }
-}
-
 
 extern const struct f_val f_const_empty_prefix_set;
 

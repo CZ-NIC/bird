@@ -521,7 +521,7 @@
 
     /* New variable is always the last on stack */
     uint pos = curline.vbase + sym->offset;
-    fstk->vstk[pos] = val_empty(sym->class & 0xff);
+    fstk->vstk[pos] = f_val_empty(sym->class & 0xff);
     fstk->vcnt = pos + 1;
   }
 
@@ -871,7 +871,7 @@
       eattr *e = ea_find(eal, da.ea_code);
 
       if (!e) {
-	RESULT_VAL(val_empty(da.f_type));
+	RESULT_VAL(f_val_empty(da.f_type));
 	break;
       }
 

@@ -443,6 +443,40 @@ m4_define(`TD_SET_MEMBER',`m4_dnl
 TDC_TYPE_VALID_SET_TYPE    case TDL_TYPE_ENUM: return true;
 MUTE')
 
+# Compound type empty value definition.
+#
+#     TD_EMPTY_NULL
+#     TD_EMPTY_ADATA
+#     TD_EMPTY_CIRCUMFIX
+
+TDH_TYPE_FUNCS()m4_dnl
+struct f_val f_val_empty(enum f_type);
+#define f_const_empty(_t) f_new_inst(FI_CONSTANT, f_val_empty(_t))
+
+MUTE
+
+TDQ_ALT
+TDX_SECTION(C, TDC_TYPE_EMPTY_VALUE, [[
+struct f_val
+f_val_empty(enum f_type t)
+{
+  switch (t) {]],
+[[    default: return (struct f_val) {};
+  }
+}]])
+TDQ_STD
+
+m4_define(`TD_EMPTY_NULL', `m4_dnl
+TDC_TYPE_EMPTY_VALUE    case TDL_TYPE_ENUM: return (struct f_val) { .type = TDL_TYPE_ENUM, };
+MUTE')
+m4_define(`TD_EMPTY_ADATA', `m4_dnl
+TDC_TYPE_EMPTY_VALUE    case TDL_TYPE_ENUM: return (struct f_val) { .type = TDL_TYPE_ENUM, .val.ad = &null_adata, };
+MUTE')
+
+m4_define(`TD_EMPTY_CIRCUMFIX', `m4_dnl
+TDY_TYPE() term: $1 EMPTY $1 { $$ = f_const_empty(TDL_TYPE_ENUM); };
+MUTE')
+
 # Relationship between EA type and filter type. This should be temporary
 # until we unify both type systems.
 #

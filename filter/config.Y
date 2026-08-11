@@ -228,24 +228,6 @@ f_new_lc_item(u32 f1, u32 t1, u32 f2, u32 t2, u32 f3, u32 t3)
 
 #define f_new_path_mask_item(...) f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = cfg_store((struct f_path_mask_item) __VA_ARGS__), });
 
-static inline struct f_inst *
-f_const_empty(enum f_type t)
-{
-  switch (t) {
-    case T_PATH:
-    case T_CLIST:
-    case T_ECLIST:
-    case T_LCLIST:
-      return f_new_inst(FI_CONSTANT, (struct f_val) {
-	.type = t,
-	.val.ad = &null_adata,
-      });
-    case T_ROUTE:
-      return f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE });
-    default:
-      return f_new_inst(FI_CONSTANT, (struct f_val) {});
-  }
-}
 
 /*
  * Remove all new lines and doubled whitespaces
@@ -926,11 +908,6 @@ term:
  | dynamic_attr { $$ = f_new_inst(FI_EA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), $1); }
 
  | term_dot_method
-
- | '+' EMPTY '+' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_PATH)); }
- | '-' EMPTY '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_CLIST)); }
- | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_ECLIST)); }
- | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_LCLIST)); }
 
  | PREPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("prepend", $3->type, $3, $5); }
  | APPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("append", $3->type, $3, $5); }

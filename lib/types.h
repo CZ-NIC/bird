@@ -175,6 +175,8 @@ TYPEDEF(T_PATH_MASK, const struct f_path_mask *, bgpmask) {
 /* BGP AS Path */
 TYPEDEF(T_PATH, const struct adata *, bgppath) {
   TD_EA(EAF_TYPE_AS_PATH);
+  TD_EMPTY_ADATA;
+  TD_EMPTY_CIRCUMFIX('+')
   TD_STR("(path) [%s]", ( as_path_format(_v, _aux, 1000), _aux ));
   TD_COMPARE(as_path_compare(_v1, _v2));
 }
@@ -182,6 +184,8 @@ TYPEDEF(T_PATH, const struct adata *, bgppath) {
 /* Community list */
 TYPEDEF(T_CLIST, const struct adata *, clist) {
   TD_EA(EAF_TYPE_INT_SET);
+  TD_EMPTY_ADATA;
+  TD_EMPTY_CIRCUMFIX('-')
   TD_STR("(clist) [%s]", ( int_set_format(_v, 1, -1, _aux, 1000), _aux ));
   TD_SAME(adata_same(_v1, _v2));
 }
@@ -195,6 +199,8 @@ TYPEDEF(T_EC, u64, ec) {
 /* Extended community list */
 TYPEDEF(T_ECLIST, const struct adata *, eclist) {
   TD_EA(EAF_TYPE_EC_SET);
+  TD_EMPTY_ADATA;
+  TD_EMPTY_CIRCUMFIX('-' '-')
   TD_STR("(eclist) [%s]", ( ec_set_format(_v, -1, _aux, 1000), _aux ));
   TD_SAME(adata_same(_v1, _v2));
 }
@@ -209,6 +215,8 @@ TYPEDEF(T_LC, struct lcomm *, lc) {
 /* Large community list */
 TYPEDEF(T_LCLIST, const struct adata *, lclist) {
   TD_EA(EAF_TYPE_LC_SET);
+  TD_EMPTY_ADATA;
+  TD_EMPTY_CIRCUMFIX('-' '-' '-')
   TD_STR("(lclist) [%s]", ( lc_set_format(_v, -1, _aux, 1000), _aux ));
   TD_SAME(adata_same(_v1, _v2));
 }
@@ -235,6 +243,7 @@ TYPEDEF(T_BYTESTRING, const struct adata *, bytestring) {
 
 TYPEDEF(T_ROUTE, struct rte *, route) {
   TD_INCLUDE(nest/route.h);
+  TD_EMPTY_NULL;
   TD_STR_BUF(rte_format(_v, _buf));
   TD_SAME(_v1 == _v2);	/* TODO: Check whether this is right */
 }
