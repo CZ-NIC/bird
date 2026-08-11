@@ -148,14 +148,11 @@ rt_export_get(struct rt_export_request *r)
       if (r->feeder.domain.rtable)
       {
 	LOCK_DOMAIN(rtable, r->feeder.domain);
-	feed = e->feed_net(e, NULL, ni->index, &r->seq_map, NULL, NULL, update);
+	feed = e->feed_net(e, ni->index, &r->seq_map, NULL, NULL, update);
 	UNLOCK_DOMAIN(rtable, r->feeder.domain);
       }
       else
-      {
-	RCU_ANCHOR(u);
-	feed = e->feed_net(e, u, ni->index, &r->seq_map, NULL, NULL, update);
-      }
+	feed = e->feed_net(e, ni->index, &r->seq_map, NULL, NULL, update);
 
       ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
 
@@ -257,11 +254,11 @@ rt_alloc_feed(uint routes, uint exports)
 }
 
 static struct rt_export_feed *
-rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u, struct bmap *seen)
+rt_export_get_next_feed(struct rt_export_feeder *f, struct bmap *seen)
 {
-  for (uint retry = 0; retry < (u ? 1024 : ~0U); retry++)
+  for (uint retry = 0; retry < ~0U; retry++)
   {
-    ASSERT_DIE(u || DOMAIN_IS_LOCKED(rtable, f->domain));
+    //ASSERT_DIE(u || DOMAIN_IS_LOCKED(rtable, f->domain));
 
     struct rt_exporter *e = atomic_load_explicit(&f->exporter, memory_order_acquire);
     if (!e)
@@ -270,12 +267,14 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u, stru
       return NULL;
     }
 
-    struct rt_export_feed *feed = e->feed_net(e, u, f->feed_index, seen,
+    //log("feed index %i", f->feed_index);
+    struct rt_export_feed *feed = e->feed_net(e, f->feed_index, seen,
 	rt_net_is_feeding_feeder, f, NULL);
     if (feed == &rt_feed_index_out_of_range)
     {
       rtex_trace(f, D_ROUTES, "Nothing more to feed", f->feed_index);
       f->feed_index = ~0;
+      //log("feed index %i", f->feed_index);
       return NULL;
     }
 
@@ -294,7 +293,7 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u, stru
     return feed;
   }
 
-  RCU_RETRY_FAST(u);
+  return NULL;
 }
 
 static bool rt_feeding_done(struct rt_export_feeder *f);
@@ -308,14 +307,11 @@ rt_export_next_feed(struct rt_export_feeder *f, struct bmap *seen)
   if (f->domain.rtable)
   {
     LOCK_DOMAIN(rtable, f->domain);
-    feed = rt_export_get_next_feed(f, NULL, seen);
+    feed = rt_export_get_next_feed(f, seen);
     UNLOCK_DOMAIN(rtable, f->domain);
   }
   else
-  {
-    RCU_ANCHOR(u);
-    feed = rt_export_get_next_feed(f, u, seen);
-  }
+    feed = rt_export_get_next_feed(f, seen);
 
   if (feed)
     return feed;
@@ -551,10 +547,7 @@ rt_feeder_unsubscribe(struct rt_export_feeder *f)
     UNLOCK_DOMAIN(rtable, f->domain);
   }
   else
-  {
-    RCU_ANCHOR(u);
     rt_feeder_do_unsubscribe(f);
-  }
 }
 
 void
