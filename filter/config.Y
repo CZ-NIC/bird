@@ -416,6 +416,8 @@ bt_test_same:
  }
  ;
 
+/* XXX FIXME XXX This must stay as is until the sets get reworked */
+
 type:
    INT { $$ = T_INT; }
  | BOOL { $$ = T_BOOL; }
