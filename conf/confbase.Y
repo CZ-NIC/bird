@@ -76,6 +76,96 @@ cf_assert_type(const struct f_val val, enum f_type type)
     cf_error("%s expected", cf_type_name(type));
 }
 
+static struct net_addr *
+new_rtfilter_item(const char *type_str, u32 asn, struct f_val asn_ip, u32 val, int pxlen)
+{
+  struct net_addr_rtfilter *n = cfg_allocz(sizeof(struct net_addr_rtfilter));
+
+  u64 rt = 0;
+  u64 type = 0;
+
+  if (type_str)
+  {
+    if (strcmp(type_str, "rt-as2") == 0)
+      type = 0x0002;
+    else if (strcmp(type_str, "rt-ip4") == 0)
+      type = 0x0102;
+    else if (strcmp(type_str, "rt-as4") == 0)
+      type = 0x0202;
+    else if (strcmp(type_str, "rt") == 0)
+    {
+      if (asn_ip.type == T_INT)
+      {
+	if (val > 0xffff)
+	  type = 0x0002;
+
+	if (asn > 0xffff)
+	  type = 0x0202;
+
+	type = 0x0002;
+      }
+      else if (asn_ip.type == T_IP)
+	type = 0x0102;
+      else
+	cf_error("Unknown RT constraint type");
+    }
+    else
+      cf_error("Unknown RT constraint type");
+  }
+
+  rt |= type << 48;
+
+  if (type == 0x0002)
+  {
+    if (asn_ip.val.i > 0xffff)
+      cf_error("ASN out of range for type 0x0002");
+
+    // f_val.val.i is uint, ASN is u32, OK or not OK?
+
+    rt |= ((u64)asn_ip.val.i & 0xffff) << 16;
+    rt |= (u64)val & 0xffffffff;
+  }
+  else if (type == 0x0102)
+  {
+    if (val > 0xffff)
+      cf_error("Value out of range for type 0x0102");
+
+    rt |= ((u64)ip4_to_u32(ipa_to_ip4(asn_ip.val.ip))) << 16;
+    rt |= (u64)val & 0xffff;
+  }
+  else if (type == 0x0202)
+  {
+    if (val > 0xffff)
+      cf_error("Value out of range for type 0x0202");
+
+    rt |= (u64)asn_ip.val.i << 48;
+    rt |= (u64)val & 0xffff;
+  }
+  else	  /* type == 0, it has not been assigned */
+  {
+    /* RT constraint has no type, it's just a 64-bit number */
+
+    if (asn_ip.type != T_EC)
+      cf_error("Invalid type");
+
+    rt = asn_ip.val.ec;
+  }
+
+  /*
+   * If pxlen lies at the boundary of ASN/IPv4 and value field (indicated by -1),
+   * set the correct value according to type.
+   */
+  if (pxlen == -1)
+    pxlen = (type == 0x0002) ? 32 : 48;
+
+  net_fill_rtfilter((net_addr *)n, asn, vrt_from_u64(rt), (u32)pxlen);
+
+  if (!net_validate_rtfilter(n))
+    cf_error("Invalid net");
+
+  return (net_addr *)n;
+}
+
 
 CF_DECLS
 
@@ -141,6 +231,7 @@ CF_DECLS
 %token <ip6> IP6
 %token <mac> MAC_
 %token <rd> VPN_RD
+%token <rt> VPN_RT
 %token <s> CF_SYM_KNOWN CF_SYM_UNDEFINED CF_SYM_METHOD_BARE CF_SYM_METHOD_ARGS
 %token <t> TEXT
 %token <bs> BYTETEXT
@@ -153,7 +244,8 @@ CF_DECLS
 %type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_eth_ net_mpls_ net_aspa_ net_nbr_
 %type <net_ptr> net_evpn_ net_evpn_ead_ net_evpn_mac_ net_evpn_mac_ip_ net_evpn_imet_ net_evpn_es_
-%type <net_ptr> net_rtfilter_
+%type <net_ptr> net_rtfilter_ rt_constraint_
+%type <v> asn_or_ip4_
 %type <mls> label_stack_start label_stack
 %type <esi> evpn_esi
 
@@ -440,22 +532,6 @@ net_nbr_: NEIGHBOR ipa '%' expr
   net_fill_nbr($$, $2, $4);
 }
 
-net_rtfilter_ : RTFILTER VPN_RD '/' NUM AS expr
-{
-  struct vpn_rt rt = {
-    .hi = $2.hi,
-    .lo = $2.lo,
-  };
-
-  $$ = cfg_alloc(sizeof(net_addr_rtfilter));
-  net_fill_rtfilter($$, $6, rt, $4);
-
-  net_addr_rtfilter *n = (void *) $$;
-
-  if (!net_validate_rtfilter(n))
-    cf_error("Invalid net");
-}
-
 net_ip_: net_ip4_ | net_ip6_ ;
 net_vpn_: net_vpn4_ | net_vpn6_ ;
 net_roa_: net_roa4_ | net_roa6_ ;
@@ -529,6 +605,25 @@ label_stack:
     $$ = $1;
   }
 ;
+
+asn_or_ip4_:
+   NUM { $$ = (struct f_val) { .type = T_EC, .val.ec = ec_generic($1, 0) }; }
+ | IP4 { $$ = (struct f_val) { .type = T_IP, .val.ip = ipa_from_ip4($1)  }; }
+ ;
+
+rt_constraint_:
+   '(' NUM '/' NUM ')' AS NUM { $$ = new_rtfilter_item(NULL, $7, (struct f_val) { .type = T_EC, .val.ec = ec_generic(ec_hi($2), ec_lo($2)) }, 0, $4); }
+ | '(' TEXT ',' '*' ',' '*' ')'			AS NUM	{ $$ = new_rtfilter_item($2, $9, (struct f_val) { .type = T_INT, .val.i = 0 }, 0, 16); }
+ | '(' TEXT ',' asn_or_ip4_ '/' NUM ',' '*' ')' AS NUM	{ $$ = new_rtfilter_item($2, $11, $4, 0,  $6); }
+ | '(' TEXT ',' asn_or_ip4_ ',' '*' ')'		AS NUM	{ $$ = new_rtfilter_item($2, $9,  $4, 0,  -1); }
+ | '(' TEXT ',' asn_or_ip4_ ',' NUM '/' NUM ')' AS NUM	{ $$ = new_rtfilter_item($2, $11, $4, $6, $8); }
+ | '(' TEXT ',' asn_or_ip4_ ',' NUM ')'		AS NUM	{ $$ = new_rtfilter_item($2, $9,  $4, $6, 64); }
+ ;
+
+net_rtfilter_ : RTFILTER rt_constraint_
+{
+  $$ = $2;
+}
 
 
 /* Strings */
