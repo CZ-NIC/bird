@@ -103,6 +103,17 @@ struct f_val {
   } val;
 };
 
+/* Detailed type/class definitions */
+struct f_class {
+  enum f_type id;		/* T_* for static types */
+  const char *name;		/* String name */
+  struct f_val empty;		/* Default value of uninitialized variables */
+};
+
+void f_class_register_static(const struct f_class *);
+void f_class_register_dynamic(const struct f_class *, int *id);
+void f_class_build(void);
+
 /* Dynamic attribute definition (eattrs) */
 struct f_dynamic_attr {
   u8 type;		/* EA type (EAF_*) */

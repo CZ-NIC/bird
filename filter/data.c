@@ -25,55 +25,225 @@
 #include "filter/f-inst.h"
 #include "filter/data.h"
 
-static const char * const f_type_str[] = {
-  [T_VOID]	= "void",
-  [T_NONE]	= "none",
 
-  [T_INT]	= "int",
-  [T_BOOL]	= "bool",
-  [T_PAIR]	= "pair",
-  [T_QUAD]	= "quad",
-
-  [T_ENUM_RTS]	= "enum rts",
-  [T_ENUM_BGP_ORIGIN] = "enum bgp_origin",
-  [T_ENUM_SCOPE] = "enum scope",
-  [T_ENUM_RTD]	= "enum rtd",
-  [T_ENUM_ROA]	= "enum roa",
-  [T_ENUM_ASPA] = "enum aspa",
-  [T_ENUM_NET_TYPE] = "enum net_type",
-  [T_ENUM_RA_PREFERENCE] = "enum ra_preference",
-  [T_ENUM_AF]	= "enum af",
-  [T_ENUM_MPLS_POLICY] = "enum mpls_policy",
-  [T_ENUM_NET_EVPN_TYPE] = "enum net_evpn_type",
-
-  [T_IP]	= "ip",
-  [T_NET]	= "prefix",
-  [T_STRING]	= "string",
-  [T_BYTESTRING]	= "bytestring",
-  [T_PATH_MASK]	= "bgpmask",
-  [T_PATH]	= "bgppath",
-  [T_CLIST]	= "clist",
-  [T_EC]	= "ec",
-  [T_ECLIST]	= "eclist",
-  [T_LC]	= "lc",
-  [T_LCLIST]	= "lclist",
-  [T_RD]	= "rd",
-  [T_MAC]	= "mac",
-
-  [T_ROUTE] = "route",
-  [T_ROUTES_BLOCK] = "block of routes",
+static const struct f_class f_type_void = {
+  .id = T_VOID,
+  .name = "void",
 };
+
+static const struct f_class f_type_none = {
+  .id = T_NONE,
+  .name = "none",
+};
+
+static const struct f_class f_type_int = {
+  .id = T_INT,
+  .name = "int",
+};
+
+static const struct f_class f_type_bool = {
+  .id = T_BOOL,
+  .name = "bool",
+};
+
+static const struct f_class f_type_pair = {
+  .id = T_PAIR,
+  .name = "pair",
+};
+
+static const struct f_class f_type_quad = {
+  .id = T_QUAD,
+  .name = "quad",
+};
+
+static const struct f_class f_type_enum_rts = {
+  .id = T_ENUM_RTS,
+  .name = "enum rts",
+};
+
+static const struct f_class f_type_enum_bgp_origin = {
+  .id = T_ENUM_BGP_ORIGIN,
+  .name = "enum bgp_origin",
+};
+
+static const struct f_class f_type_enum_scope = {
+  .id = T_ENUM_SCOPE,
+  .name = "enum scope",
+};
+
+static const struct f_class f_type_enum_rtd = {
+  .id = T_ENUM_RTD,
+  .name = "enum rtd",
+};
+
+static const struct f_class f_type_enum_roa = {
+  .id = T_ENUM_ROA,
+  .name = "enum roa",
+};
+
+static const struct f_class f_type_enum_aspa = {
+  .id = T_ENUM_ASPA,
+  .name = "enum aspa",
+};
+
+static const struct f_class f_type_enum_net_type = {
+  .id = T_ENUM_NET_TYPE,
+  .name = "enum net_type",
+};
+
+static const struct f_class f_type_enum_ra_preference = {
+  .id = T_ENUM_RA_PREFERENCE,
+  .name = "enum ra_preference",
+};
+
+static const struct f_class f_type_enum_af = {
+  .id = T_ENUM_AF,
+  .name = "enum af",
+};
+
+static const struct f_class f_type_enum_mpls_policy = {
+  .id = T_ENUM_MPLS_POLICY,
+  .name = "enum mpls_policy",
+};
+
+static const struct f_class f_type_enum_net_evpn_type = {
+  .id = T_ENUM_NET_EVPN_TYPE,
+  .name = "enum net_evpn_type",
+};
+
+static const struct f_class f_type_ip = {
+  .id = T_IP,
+  .name = "ip",
+};
+
+static const struct f_class f_type_prefix = {
+  .id = T_NET,
+  .name = "prefix",
+};
+
+static const struct f_class f_type_string = {
+  .id = T_STRING,
+  .name = "string",
+};
+
+static const struct f_class f_type_bytestring = {
+  .id = T_BYTESTRING,
+  .name = "bytestring",
+};
+
+static const struct f_class f_type_bgpmask = {
+  .id = T_PATH_MASK,
+  .name = "bgpmask",
+};
+
+static const struct f_class f_type_bgppath = {
+  .id = T_PATH,
+  .name = "bgppath",
+};
+
+static const struct f_class f_type_clist = {
+  .id = T_CLIST,
+  .name = "clist",
+};
+
+static const struct f_class f_type_ec = {
+  .id = T_EC,
+  .name = "ec",
+};
+
+static const struct f_class f_type_eclist = {
+  .id = T_ECLIST,
+  .name = "eclist",
+};
+
+static const struct f_class f_type_lc = {
+  .id = T_LC,
+  .name = "lc",
+};
+
+static const struct f_class f_type_lclist = {
+  .id = T_LCLIST,
+  .name = "lclist",
+};
+
+static const struct f_class f_type_rd = {
+  .id = T_RD,
+  .name = "rd",
+};
+
+static const struct f_class f_type_mac = {
+  .id = T_MAC,
+  .name = "mac",
+};
+
+static const struct f_class f_type_route = {
+  .id = T_ROUTE,
+  .name = "route",
+};
+
+static const struct f_class f_type_routes = {
+  .id = T_ROUTES_BLOCK,
+  .name = "routes",
+};
+
+const struct f_class *f_base_types[0x7f];	/* TODO: Autocompute the limit */
+
+void
+f_class_register_static(const struct f_class *cls)
+{
+  ASSERT_DIE(f_base_types[cls->id] == NULL);
+  f_base_types[cls->id] = cls;
+}
+
+void
+f_class_build(void)
+{
+  /* TODO: Autogenerate this by M4 */
+  f_class_register_static(&f_type_void);
+  f_class_register_static(&f_type_none);
+  f_class_register_static(&f_type_int);
+  f_class_register_static(&f_type_bool);
+  f_class_register_static(&f_type_pair);
+  f_class_register_static(&f_type_quad);
+  f_class_register_static(&f_type_enum_rts);
+  f_class_register_static(&f_type_enum_bgp_origin);
+  f_class_register_static(&f_type_enum_scope);
+  f_class_register_static(&f_type_enum_rtd);
+  f_class_register_static(&f_type_enum_roa);
+  f_class_register_static(&f_type_enum_aspa);
+  f_class_register_static(&f_type_enum_net_type);
+  f_class_register_static(&f_type_enum_ra_preference);
+  f_class_register_static(&f_type_enum_af);
+  f_class_register_static(&f_type_enum_mpls_policy);
+  f_class_register_static(&f_type_enum_net_evpn_type);
+  f_class_register_static(&f_type_ip);
+  f_class_register_static(&f_type_prefix);
+  f_class_register_static(&f_type_string);
+  f_class_register_static(&f_type_bytestring);
+  f_class_register_static(&f_type_bgpmask);
+  f_class_register_static(&f_type_bgppath);
+  f_class_register_static(&f_type_clist);
+  f_class_register_static(&f_type_ec);
+  f_class_register_static(&f_type_eclist);
+  f_class_register_static(&f_type_lc);
+  f_class_register_static(&f_type_lclist);
+  f_class_register_static(&f_type_rd);
+  f_class_register_static(&f_type_mac);
+  f_class_register_static(&f_type_route);
+  f_class_register_static(&f_type_routes);
+}
 
 const char *
 f_type_name(enum f_type t)
 {
-  if (t < ARRAY_SIZE(f_type_str))
-    return f_type_str[t] ?: "?";
+  const struct f_class *cls = NULL;
+  if (t < ARRAY_SIZE(f_base_types))
+    cls = f_base_types[t];
 
-  if ((t == T_SET) || (t == T_PREFIX_SET))
+  else if ((t == T_SET) || (t == T_PREFIX_SET))
     return "set";
 
-  return "?";
+  return cls ? cls->name : "?";
 }
 
 enum f_type
