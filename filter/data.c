@@ -139,11 +139,13 @@ static const struct f_class f_type_bgpmask = {
 static const struct f_class f_type_bgppath = {
   .id = T_PATH,
   .name = "bgppath",
+  .empty = { .type = T_PATH, .val.ad = &null_adata },
 };
 
 static const struct f_class f_type_clist = {
   .id = T_CLIST,
   .name = "clist",
+  .empty = { .type = T_CLIST, .val.ad = &null_adata },
 };
 
 static const struct f_class f_type_ec = {
@@ -154,6 +156,7 @@ static const struct f_class f_type_ec = {
 static const struct f_class f_type_eclist = {
   .id = T_ECLIST,
   .name = "eclist",
+  .empty = { .type = T_ECLIST, .val.ad = &null_adata },
 };
 
 static const struct f_class f_type_lc = {
@@ -164,6 +167,7 @@ static const struct f_class f_type_lc = {
 static const struct f_class f_type_lclist = {
   .id = T_LCLIST,
   .name = "lclist",
+  .empty = { .type = T_LCLIST, .val.ad = &null_adata },
 };
 
 static const struct f_class f_type_rd = {
@@ -179,6 +183,7 @@ static const struct f_class f_type_mac = {
 static const struct f_class f_type_route = {
   .id = T_ROUTE,
   .name = "route",
+  .empty = { .type = T_ROUTE, },
 };
 
 static const struct f_class f_type_routes = {
@@ -244,6 +249,13 @@ f_type_name(enum f_type t)
     return "set";
 
   return cls ? cls->name : "?";
+}
+
+struct f_val
+val_empty(enum f_type t)
+{
+  const struct f_class *cls = (t < ARRAY_SIZE(f_base_types)) ? f_base_types[t] : NULL;
+  return cls ? cls->empty : (struct f_val) {};
 }
 
 enum f_type
