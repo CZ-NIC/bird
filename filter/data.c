@@ -39,6 +39,7 @@ static const struct f_class f_type_none = {
 static const struct f_class f_type_int = {
   .id = T_INT,
   .name = "int",
+  .pretty_name = "Integer",
 };
 
 static const struct f_class f_type_bool = {
@@ -114,6 +115,7 @@ static const struct f_class f_type_enum_net_evpn_type = {
 static const struct f_class f_type_ip = {
   .id = T_IP,
   .name = "ip",
+  .pretty_name = "IP address",
 };
 
 static const struct f_class f_type_prefix = {
@@ -124,11 +126,13 @@ static const struct f_class f_type_prefix = {
 static const struct f_class f_type_string = {
   .id = T_STRING,
   .name = "string",
+  .pretty_name = "String",
 };
 
 static const struct f_class f_type_bytestring = {
   .id = T_BYTESTRING,
   .name = "bytestring",
+  .pretty_name = "Bytestring",
 };
 
 static const struct f_class f_type_bgpmask = {
@@ -248,7 +252,26 @@ f_type_name(enum f_type t)
   else if ((t == T_SET) || (t == T_PREFIX_SET))
     return "set";
 
-  return cls ? cls->name : "?";
+  return cls ? cls->name : tmp_sprintf("unknown_type_0x%x", t);
+}
+
+const char *
+f_type_pretty_name(enum f_type t)
+{
+  const struct f_class *cls = NULL;
+  if (t < ARRAY_SIZE(f_base_types))
+    cls = f_base_types[t];
+
+  else if ((t == T_SET) || (t == T_PREFIX_SET))
+    return "Set";
+
+  if (cls)
+    if (cls->pretty_name)
+      return cls->pretty_name;
+    else if (cls->name)
+      return tmp_sprintf("Type %s", cls->name);
+
+  return tmp_sprintf("Unknown type 0x%x", t);
 }
 
 struct f_val

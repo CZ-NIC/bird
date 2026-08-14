@@ -107,6 +107,7 @@ struct f_val {
 struct f_class {
   enum f_type id;		/* T_* for static types */
   const char *name;		/* String name */
+  const char *pretty_name;	/* More descriptive name */
   struct f_val empty;		/* Default value of uninitialized variables */
 };
 
@@ -311,6 +312,7 @@ trie_match_next_longest_ip6(net_addr_ip6 *n, ip6_addr *found)
 #define F_CMP_ERROR 999
 
 const char *f_type_name(enum f_type t);
+const char *f_type_pretty_name(enum f_type t);
 enum f_type f_type_element_type(enum f_type t);
 struct sym_scope *f_type_method_scope(enum f_type t);
 
