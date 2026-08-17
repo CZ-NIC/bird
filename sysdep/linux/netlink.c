@@ -1176,8 +1176,11 @@ nl_parse_link(struct nlmsghdr *h, int scan)
       f.index = i->ifi_index;
       f.mtu = mtu;
 
-      f.master_index = master;
-      f.master = if_find_by_index(master);
+      if (master)
+      {
+	f.master_index = master;
+	f.master = if_find_by_index(master);
+      }
 
       fl = i->ifi_flags;
       if (fl & IFF_UP)
@@ -1454,6 +1457,7 @@ kif_do_scan(struct kif_proto *p UNUSED)
       if (f.master != i->master)
       {
 	memcpy(f.name, i->name, sizeof(f.name));
+	f.attrs = i->attrs ? rta_clone(i->attrs) : NULL;
 	if_update(&f);
       }
     }

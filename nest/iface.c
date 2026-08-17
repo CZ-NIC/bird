@@ -298,6 +298,10 @@ if_delete(struct iface *old)
  * calling if_end_update(). When working asynchronously, the sysdep code
  * calls if_update() and ifa_update() whenever it notices a change.
  *
+ * When an interface has attributes, they can be passed either un-cached or
+ * cached. In the latter case, ownership of the reference is transferred from
+ * the caller to the if_update().
+ *
  * if_update() will automatically notify all other modules about the change.
  */
 struct iface *
