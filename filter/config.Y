@@ -342,11 +342,11 @@ assert_assign(struct f_lval *lval, struct f_inst *expr, const char *start, const
 
 CF_DECLS
 
-CF_KEYWORDS_EXCLUSIVE(IN)
+CF_KEYWORDS_EXCLUSIVE(IN, SET)
 CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ACCEPT, REJECT, ERROR,
 	INT, BOOL, IP, PREFIX, RD, MAC, PAIR, QUAD, EC, LC, ENUM,
-	SET, STRING, BYTESTRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
+	STRING, BYTESTRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
 	FOR, DO,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
@@ -372,7 +372,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <f> filter where_filter
 %type <fl> filter_body function_body
 %type <flv> lvalue
-%type <i> type function_vars function_type
+%type <i> type type_kw function_vars function_type
 %type <fa> function_argsn function_args
 %type <ecs> ec_kind
 %type <fret> break_command
@@ -439,7 +439,7 @@ bt_test_same:
  }
  ;
 
-type:
+type_kw:
    INT { $$ = T_INT; }
  | BOOL { $$ = T_BOOL; }
  | IP { $$ = T_IP; }
@@ -458,7 +458,7 @@ type:
  | ECLIST { $$ = T_ECLIST; }
  | LCLIST { $$ = T_LCLIST; }
  | ROUTE { $$ = T_ROUTE; }
- | type SET {
+ | type_kw SET {
 	switch ($1) {
 	  case T_INT:
 	  case T_PAIR:
@@ -481,6 +481,13 @@ type:
 	}
    }
  | ENUM enum_type { $$ = $2; };
+
+type:
+   symbol_known {
+     cf_assert_symbol($1, SYM_CLASS);
+     $$ = $1->cls->id;
+   }
+ | type_kw
  ;
 
 function_argsn:
@@ -504,7 +511,9 @@ function_args:
 
 function_vars:
    /* EMPTY */ { $$ = 0; }
- | function_vars type symbol ';' {
+ | function_vars type_kw symbol ';' {
+     cf_warn("Legacy variable declaration syntax for filters is deprecated. Move your variables inside the block, please.");
+
      cf_define_symbol(new_config, $3, SYM_VARIABLE | $2, offset, f_new_var(sym_->scope));
      $$ = $1 + 1;
    }
@@ -519,6 +528,9 @@ filter_body: function_body ;
 
 filter:
    symbol_known {
+     if ($1->class == SYM_CLASS)
+       cf_error("Legacy variable declaration syntax for filters is deprecated and does not work for new and dynamic types. Move your variables inside the block, please.");
+
      cf_assert_symbol($1, SYM_FILTER);
      $$ = $1->filter;
    }

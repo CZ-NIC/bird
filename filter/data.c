@@ -33,27 +33,32 @@ static const struct f_class f_type_void = {
 
 static const struct f_class f_type_none = {
   .id = T_NONE,
+  .hidden = true,
   .name = "none",
 };
 
 static const struct f_class f_type_int = {
   .id = T_INT,
+  .legacy_kw = true,
   .name = "int",
   .pretty_name = "Integer",
 };
 
 static const struct f_class f_type_bool = {
   .id = T_BOOL,
+  .legacy_kw = true,
   .name = "bool",
 };
 
 static const struct f_class f_type_pair = {
   .id = T_PAIR,
+  .legacy_kw = true,
   .name = "pair",
 };
 
 static const struct f_class f_type_quad = {
   .id = T_QUAD,
+  .legacy_kw = true,
   .name = "quad",
 };
 
@@ -114,78 +119,92 @@ static const struct f_class f_type_enum_net_evpn_type = {
 
 static const struct f_class f_type_ip = {
   .id = T_IP,
+  .legacy_kw = true,
   .name = "ip",
   .pretty_name = "IP address",
 };
 
 static const struct f_class f_type_prefix = {
   .id = T_NET,
+  .legacy_kw = true,
   .name = "prefix",
 };
 
 static const struct f_class f_type_string = {
   .id = T_STRING,
+  .legacy_kw = true,
   .name = "string",
   .pretty_name = "String",
 };
 
 static const struct f_class f_type_bytestring = {
   .id = T_BYTESTRING,
+  .legacy_kw = true,
   .name = "bytestring",
   .pretty_name = "Bytestring",
 };
 
 static const struct f_class f_type_bgpmask = {
   .id = T_PATH_MASK,
+  .legacy_kw = true,
   .name = "bgpmask",
 };
 
 static const struct f_class f_type_bgppath = {
   .id = T_PATH,
+  .legacy_kw = true,
   .name = "bgppath",
   .empty = { .type = T_PATH, .val.ad = &null_adata },
 };
 
 static const struct f_class f_type_clist = {
   .id = T_CLIST,
+  .legacy_kw = true,
   .name = "clist",
   .empty = { .type = T_CLIST, .val.ad = &null_adata },
 };
 
 static const struct f_class f_type_ec = {
   .id = T_EC,
+  .legacy_kw = true,
   .name = "ec",
 };
 
 static const struct f_class f_type_eclist = {
   .id = T_ECLIST,
+  .legacy_kw = true,
   .name = "eclist",
   .empty = { .type = T_ECLIST, .val.ad = &null_adata },
 };
 
 static const struct f_class f_type_lc = {
   .id = T_LC,
+  .legacy_kw = true,
   .name = "lc",
 };
 
 static const struct f_class f_type_lclist = {
   .id = T_LCLIST,
+  .legacy_kw = true,
   .name = "lclist",
   .empty = { .type = T_LCLIST, .val.ad = &null_adata },
 };
 
 static const struct f_class f_type_rd = {
   .id = T_RD,
+  .legacy_kw = true,
   .name = "rd",
 };
 
 static const struct f_class f_type_mac = {
   .id = T_MAC,
+  .legacy_kw = true,
   .name = "mac",
 };
 
 static const struct f_class f_type_route = {
   .id = T_ROUTE,
+  .legacy_kw = true,
   .name = "route",
   .empty = { .type = T_ROUTE, },
 };

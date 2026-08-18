@@ -106,6 +106,8 @@ struct f_val {
 /* Detailed type/class definitions */
 struct f_class {
   enum f_type id;		/* T_* for static types */
+  bool hidden;			/* Inaccessible for users from config */
+  bool legacy_kw;		/* Accessed from type_kw in parser */
   const char *name;		/* String name */
   const char *pretty_name;	/* More descriptive name */
   struct f_val empty;		/* Default value of uninitialized variables */
@@ -114,6 +116,8 @@ struct f_class {
 void f_class_register_static(const struct f_class *);
 void f_class_register_dynamic(const struct f_class *, int *id);
 void f_class_build(void);
+
+extern const struct f_class *f_base_types[0x7f];	/* TODO: Autocompute the limit */
 
 /* Dynamic attribute definition (eattrs) */
 struct f_dynamic_attr {

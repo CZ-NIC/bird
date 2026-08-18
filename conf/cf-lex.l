@@ -695,6 +695,7 @@ cf_lex_symbol(const char *data)
 
   switch (sym->class)
   {
+    /* fall through */
     case SYM_KEYWORD:
     {
       int val = sym->keyword->value;
@@ -764,7 +765,38 @@ cf_lex_init(int is_cli, struct config *c)
   if (is_cli)
     c->current_scope->next = config->root_scope;
   else
+  {
     c->current_scope->next = global_root_scope;
+
+    /* Pre-fill this scope with filter types */
+    for (uint t = 0; t < ARRAY_SIZE(f_base_types); t++)
+    {
+      const struct f_class *cls = f_base_types[t];
+
+      /* Base type IDs are sparse for now */
+      if (!cls)
+	continue;
+
+      /* Hack until enums get reworked */
+      if (strchr(cls->name, ' '))
+	continue;
+
+      struct symbol *sym = cf_get_symbol(c, cls->name);
+      if (sym)
+	if (sym->class == SYM_KEYWORD)
+	  if (cls->legacy_kw)
+	    continue;
+	  else
+	    sym = cf_new_symbol(c->current_scope, c->pool, c->mem, cls->name);
+	else if (sym->class)
+	  bug("Defining filter type %s failed: symbol already exists with type %d", cls->name, sym->class);
+      else if (cls->legacy_kw)
+	bug("Filter type %s expects legacy keyword (type_kw) but there is no such keyword in the lexer.", cls->name);
+
+      sym->class = SYM_CLASS;
+      sym->cls = cls;
+    }
+  }
 }
 
 /**
