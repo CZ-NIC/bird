@@ -518,6 +518,7 @@ function_args:
 function_vars:
    /* EMPTY */ { $$ = 0; }
  | function_vars type symbol ';' {
+     cf_warn("Legacy definition of function/filter variables has been deprecated and will be removed in the next version. Move your variables into the block, please.");
      cf_define_symbol(new_config, $3, SYM_VARIABLE | $2, offset, f_new_var(sym_->scope));
      $$ = $1 + 1;
    }
