@@ -321,10 +321,23 @@ static struct f_inst *
 f_lval_setter(struct f_lval *lval, struct f_inst *expr)
 {
   switch (lval->type) {
-    case F_LVAL_VARIABLE:	return f_new_inst(FI_VAR_SET, expr, lval->sym);
-    case F_LVAL_SA:		return f_new_inst(FI_RTA_SET, expr, lval->sa);
-    case F_LVAL_EA:		return f_new_inst(FI_EA_SET, expr, lval->da);
-    default:			bug("Unknown lval type");
+    case F_LVAL_VARIABLE:
+      return f_new_inst(FI_VAR_SET, expr, lval->sym);
+
+    case F_LVAL_SA:
+      if (lval->sa.readonly)
+	cf_error("Route attribute %s is read-only.", lval->sa.sym->name);
+
+      return f_new_inst(FI_RTA_SET, expr, lval->sa);
+
+    case F_LVAL_EA:
+      if (lval->rte->fi_code != FI_CONSTANT || lval->rte->i_FI_CONSTANT.val.type != T_ROUTE || lval->rte->i_FI_CONSTANT.val.val.rte)
+	cf_error("Auxiliary routes are read-only");
+
+      return f_new_inst(FI_EA_SET, expr, lval->da);
+
+    default:
+      bug("Unknown lval type");
   }
 }
 
@@ -1021,17 +1034,8 @@ cmd:
      cf_pop_block_scope(new_config);
      $$ = f_for_cycle($3, $6, $9);
    }
- | symbol_known '=' term ';' {
-     switch ($1->class) {
-       case SYM_VARIABLE_RANGE:
-	 $$ = f_new_inst(FI_VAR_SET, $3, $1);
-	 break;
-       case SYM_ATTRIBUTE:
-	 $$ = f_new_inst(FI_EA_SET, $3, *$1->attribute);
-	 break;
-       default:
-	 cf_error("Can't assign to symbol %s", $1->name);
-     }
+ | lvalue '=' term ';' {
+     $$ = f_lval_setter(&$1, $3);
    }
  | RETURN term ';' {
      DBG( "Ook, we'll return the value\n" );
@@ -1048,14 +1052,6 @@ cmd:
 		f_type_name($2->type), this_function->name, f_type_name(this_function->function->return_type));
 
      $$ = f_new_inst(FI_RETURN, $2);
-   }
- | dynamic_attr '=' term ';' {
-     $$ = f_new_inst(FI_EA_SET, $3, $1);
-   }
- | static_attr '=' term ';' {
-     if ($1.readonly)
-       cf_error( "This static attribute is read-only.");
-     $$ = f_new_inst(FI_RTA_SET, $3, $1);
    }
  | UNSET '(' dynamic_attr ')' ';' {
      $$ = f_new_inst(FI_EA_UNSET, $3);
@@ -1102,16 +1098,17 @@ lvalue:
      switch ($1->class)
      {
        case SYM_VARIABLE_RANGE:
-	 $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1, .rte = f_const_empty(T_ROUTE) };
+	 $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1 };
          break;
        case SYM_ATTRIBUTE:
          $$ = (struct f_lval) { .type = F_LVAL_EA, .da = *($1->attribute), .rte = f_const_empty(T_ROUTE) };
+	 $$.da.sym = $1;
 	 break;
        default:
-	 cf_error("Variable name or custom attribute name required");
+	 cf_error("Access to %s not possible in filters", $1->name);
      }
    }
- | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1, .rte = f_const_empty(T_ROUTE) }; }
+ | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1, .rte = f_const_empty(T_ROUTE) }; } /* TODO store SA and DA keyword name */
  | dynamic_attr { $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1, .rte = f_const_empty(T_ROUTE) }; }
  ;
 
