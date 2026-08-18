@@ -428,27 +428,39 @@ evpn_rt_notify(struct proto *P, struct channel *c0 UNUSED, net *net, rte *new, r
 static int
 evpn_validate_iface_attrs(struct evpn_proto *p, const struct iface *i)
 {
-  if (!i->attrs || !i->attrs->eattrs)
-    return 0;
-
+  struct evpn_config *cf = SKIP_BACK(struct evpn_config, c, p->p.cf);
   struct evpn_encap *encap = evpn_get_encap(p);
 
+  /* Should not happen */
   if (encap->tunnel_dev != i)
     return 0;
 
-  const eattr *ipa = ea_find(i->attrs->eattrs, EA_IFACE_VXLAN_IP_ADDR);
-
-  u32 type = ea_get_int(i->attrs->eattrs, EA_IFACE_TYPE, IF_TYPE_UNDEF);
-  u32 if_vni = ea_get_int(i->attrs->eattrs, EA_IFACE_VXLAN_ID, 0);
-
-  if (type != IF_TYPE_VXLAN || !ipa)
+  struct iface *bridge = i->master;
+  if (!bridge)
+  {
+    log(L_ERR "%s: Interface %s has no master bridge", p->p.name, i->name);
     return 0;
+  }
 
-  ip_addr rt_addr;
-  ASSERT(sizeof(rt_addr) == ipa->u.ptr->length);
-  memcpy(&rt_addr, ipa->u.ptr->data, ipa->u.ptr->length);
+  ea_list *attrs = i->attrs ? i->attrs->eattrs : NULL;
+  u32 if_type = ea_get_int(attrs, EA_IFACE_TYPE, IF_TYPE_UNDEF);
+  u32 if_vni = ea_get_int(attrs, EA_IFACE_VXLAN_ID, 0);
+  ip_addr rt_addr = ea_get_val(attrs, EA_IFACE_VXLAN_IP_ADDR, ip_addr, IPA_NONE);
 
-  struct evpn_config *cf = SKIP_BACK(struct evpn_config, c, p->p.cf);
+  ea_list *br_attrs = bridge->attrs ? bridge->attrs->eattrs : NULL;
+  u32 br_type = ea_get_int(br_attrs, EA_IFACE_TYPE, IF_TYPE_UNDEF);
+
+  if (if_type != IF_TYPE_VXLAN)
+  {
+    log(L_ERR "%s: Interface %s is not VXLAN", p->p.name, i->name);
+    return 0;
+  }
+
+  if (br_type != IF_TYPE_BRIDGE)
+  {
+    log(L_ERR "%s: Interface %s is not a bridge", p->p.name, bridge->name);
+    return 0;
+  }
 
   /*
    * VLANs -> if_vni must be 0
@@ -487,6 +499,8 @@ evpn_validate_iface_attrs(struct evpn_proto *p, const struct iface *i)
 
   if (ipa_zero(encap->router_addr) && !ipa_zero(rt_addr))
     encap->router_addr = rt_addr;
+
+  p->bridge_dev = bridge;
 
   return 1;
 }
@@ -739,11 +753,13 @@ evpn_remove_vlan(struct evpn_proto *p, struct evpn_vlan *v)
 static void
 evpn_publish_vlan_request(struct evpn_proto *p, struct vlan_request *req, bool update, int vlan_count)
 {
+  ASSERT(p->p.proto_state == PS_UP);
+
   struct evpn_encap *encap = evpn_get_encap(p);
 
   /* Fill header */
   *req = (struct vlan_request) {
-    .bridge = encap->tunnel_dev->master,
+    .bridge = p->bridge_dev,
     .iface = encap->tunnel_dev,
     .owner = (uintptr_t) p,
     .update = update,
@@ -759,6 +775,10 @@ evpn_publish_vlan_request(struct evpn_proto *p, struct vlan_request *req, bool u
 static void
 evpn_request_vlan(struct evpn_proto *p, struct evpn_vlan *v, bool update)
 {
+  /* Ignore calls from evpn_reconfigure_vlans() during PS_START */
+  if (p->p.proto_state != PS_UP)
+    return;
+
   struct vlan_request *req = alloca(VLAN_REQUEST_LENGTH(1));
 
   req->vlans[0].vid = v->vid;
@@ -800,7 +820,13 @@ evpn_withdraw_vlans(struct evpn_proto *p)
 static void
 evpn_vlan_subscribe_hook(ps_publisher *pub)
 {
-  evpn_request_vlans(pub->data);
+  struct evpn_proto *p = pub->data;
+
+  /* Should not happen */
+  if (p->p.proto_state != PS_UP)
+    return;
+
+  evpn_request_vlans(p);
 }
 
 static inline int
@@ -857,6 +883,10 @@ evpn_reconfigure_vlans(struct evpn_proto *p, struct evpn_config *cf)
   if (changed)
   {
     TRACE(D_EVENTS, "VLANs changed");
+
+    /* Nothing to do when not UP */
+    if (p->p.proto_state != PS_UP)
+      return 1;
 
     /* Should not happend */
     if ((p->eth_channel->channel_state != CS_UP) ||
@@ -972,15 +1002,12 @@ evpn_if_notify(struct proto *P, unsigned flags, struct iface *iface)
   struct evpn_proto *p = SKIP_BACK(struct evpn_proto, p, P);
   struct evpn_encap *encap = evpn_get_encap(p);
 
-  if (flags & IF_IGNORE)
-    return;
-
   if (iface != encap->tunnel_dev)
     return;
 
   if ((p->p.proto_state == PS_START) && (flags & IF_CHANGE_UP))
     evpn_started(p, iface);
-  else if (flags & IF_CHANGE_DOWN)
+  else if ((p->p.proto_state == PS_UP) && (flags & IF_CHANGE_DOWN))
     proto_notify_state(&p->p, evpn_shutdown(&p->p));
 }
 
@@ -1054,13 +1081,12 @@ evpn_start(struct proto *P)
   p->vid = cf->vid;
   p->tagX = cf->tagX;
 
+  p->bridge_dev = NULL;
+  p->vlan_pub = NULL;
+
   init_list(&p->encaps);
   WALK_LIST_(struct evpn_encap_config, ec, cf->encaps)
     evpn_new_encap(p, ec);
-
-  struct evpn_encap *encap = evpn_get_encap(p);
-  p->vlan_pub = ps_publisher_new(p->p.pool, evpn_vlan_subscribe_hook, p);
-  ps_attach_topic(p->vlan_pub, &vlan_requests, encap->tunnel_dev->master->name);
 
   init_list(&p->vlans);
   memset(&p->vlan_tag_hash, 0, sizeof(p->vlan_tag_hash));
@@ -1070,8 +1096,6 @@ evpn_start(struct proto *P)
   WALK_LIST(vc, cf->vlans)
     for (uint i = 0; i < vc->range; i++)
       evpn_new_vlan(p, vc, i);
-
-  evpn_request_vlans(p);
 
   evpn_prepare_import_targets(p);
   evpn_prepare_export_targets(p);
@@ -1097,6 +1121,10 @@ evpn_started(struct evpn_proto *p, struct iface *i)
 
   proto_notify_state(&p->p, PS_UP);
 
+  p->vlan_pub = ps_publisher_new(p->p.pool, evpn_vlan_subscribe_hook, p);
+  ps_attach_topic(p->vlan_pub, &vlan_requests, p->bridge_dev->name);
+  evpn_request_vlans(p);
+
   evpn_announce_imet(p, EVPN_ROOT_VLAN(p), 1);
 
   WALK_LIST_(struct evpn_vlan, v, p->vlans)
@@ -1108,8 +1136,10 @@ evpn_shutdown(struct proto *P)
 {
   struct evpn_proto *p = (void *) P;
 
-  evpn_withdraw_vlans(p);
-  proto_shutdown_mpls_map(P, 1);
+  if (p->p.proto_state == PS_UP)
+    evpn_withdraw_vlans(p);
+
+  // proto_shutdown_mpls_map(P, 1);
 
   return PS_DOWN;
 }
@@ -1140,7 +1170,7 @@ evpn_reconfigure(struct proto *P, struct proto_config *CF)
   p->import_target = cf->import_target;
   p->export_target = cf->export_target;
 
-  proto_setup_mpls_map(P, RTS_EVPN, 1);
+  // proto_setup_mpls_map(P, RTS_EVPN, 1);
 
   if (import_changed)
   {
