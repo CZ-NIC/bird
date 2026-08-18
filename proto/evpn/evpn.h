@@ -62,6 +62,8 @@ struct evpn_proto {
   struct channel *eth_channel;
   struct channel *evpn_channel;
 
+  struct iface *bridge_dev;		/* MAC-VRF */
+
   vpn_rd rd;
   struct f_tree *import_target;
   struct f_tree *export_target;
