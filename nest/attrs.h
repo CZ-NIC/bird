@@ -203,6 +203,18 @@ typedef struct lcomm {
   u32 ldp2;
 } lcomm;
 
+static inline int
+lcomm_cmp(lcomm v1, lcomm v2)
+{
+  if (v1.asn != v2.asn)
+    return (v1.asn > v2.asn) ? 1 : -1;
+  if (v1.ldp1 != v2.ldp1)
+    return (v1.ldp1 > v2.ldp1) ? 1 : -1;
+  if (v1.ldp2 != v2.ldp2)
+    return (v1.ldp2 > v2.ldp2) ? 1 : -1;
+  return 0;
+}
+
 #define LCOMM_LENGTH 12
 
 static inline lcomm lc_get(const u32 *l, int i)

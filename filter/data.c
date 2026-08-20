@@ -377,18 +377,6 @@ pm_format(const struct f_path_mask *p, buffer *buf)
   buffer_puts(buf, "=]");
 }
 
-static inline int
-lcomm_cmp(lcomm v1, lcomm v2)
-{
-  if (v1.asn != v2.asn)
-    return (v1.asn > v2.asn) ? 1 : -1;
-  if (v1.ldp1 != v2.ldp1)
-    return (v1.ldp1 > v2.ldp1) ? 1 : -1;
-  if (v1.ldp2 != v2.ldp2)
-    return (v1.ldp2 > v2.ldp2) ? 1 : -1;
-  return 0;
-}
-
 /**
  * val_compare - compare two values
  * @v1: first value
