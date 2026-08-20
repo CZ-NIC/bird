@@ -132,7 +132,7 @@ struct rt_cork rt_cork;
 static void rt_free_hostcache(struct rtable_private *tab);
 static void rt_hcu_uncork(callback *);
 static void rt_update_hostcache(callback *);
-static int rte_recalculate_best_locked(struct rtable_private *table);
+static void rte_recalculate_best_locked(struct rtable_private *table);
 static void rt_next_hop_update(void *_tab);
 static void rt_nhu_uncork(callback *);
 static inline void rt_next_hop_resolve_rte(rte *r);
@@ -2322,9 +2322,7 @@ rt_cleanup_done_best(struct rt_exporter *e, u64 end_seq)
   else
   {
     rt_trace(tab, D_STATES, "Export best cleanup complete, flushing regular");
-
-    while (rte_recalculate_best_locked(tab))
-      MAYBE_DEFER_TASK(tab->all_req.target, tab->all_req.event, "rte recalculate best");
+    tab->last_best_rpe = NULL;
   }
 }
 
@@ -2668,14 +2666,15 @@ rte_recalculate_best(void *t_)
   rtable *t = (rtable *)t_;
 
   RT_LOCKED(t, table)
-    while (rte_recalculate_best_locked(table))
-      MAYBE_DEFER_TASK(table->all_req.target, table->all_req.event, "rte recalculate best");
+    rte_recalculate_best_locked(table);
 }
 
 static struct rt_pending_export *
-rte_recalculate_best_for_net(struct rtable_private *table, net *nets, struct netindex *ni)
+rte_recalculate_best_for_net(struct rtable_private *table, net *nets, const struct netindex *ni)
 {
   net *nn = &nets[ni->index];
+
+  log(L_TRACE "%s: MEOW", table->name);
 
   const rte *old_best = NET_BEST_ROUTE(nn);
   const rte *best = rte_best_selection(table, nn);
@@ -2739,105 +2738,79 @@ rte_recalculate_best_for_net(struct rtable_private *table, net *nets, struct net
 if(!best && nn->routes)
     bug("store zero best rte !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
   /* Propagate the route change */
+  
   return rte_announce_best(table, ni, nn,
       best, old_best);
 }
 
-static int
+static void
 rte_recalculate_best_locked(struct rtable_private *table)
 {
   //log("rte_recalculate_best_locked route_selection_batch %i tab %p", table->config->route_selection_batch, table);
   if (!table->all_req_valid){
         log("nnnnnnnnnnnnnnnnooooooooooootttttttttttttttttttttttttt       vvvvvvvvvvvvvvvvazliiiiiiiiiid");
-    return 0;}
+    return;}
   net *nets = atomic_load_explicit(&table->routes, memory_order_acquire);
-  u32 nets_to_recalc_size = table->config->route_selection_batch;
-  struct netindex ** nets_to_recalc = tmp_alloc(sizeof(rte *) * nets_to_recalc_size);
-  u32 nets_count = 0;
-  const struct rt_export_item *last_export = NULL;
 
-  for (struct lfjour_item *it; nets_count < nets_to_recalc_size; nets_count++)
+  struct bmap seq_map;
+  bmap_init(&seq_map, table->rp, 16);
+
+  struct rt_pending_export *rpe_last = NULL;
+
+  /* Check all pending best route selection requests */
+  for (struct lfjour_item *it; it = lfjour_get(&table->all_req); )
   {
-    it = lfjour_get(&table->all_req);
-    if (!it) /* once we get the item, we have to use it. That is why this cannot be part of the for cycle*/
-      break;
-    last_export = SKIP_BACK(const struct rt_export_item, li, it);
-    const rte *route = last_export->new? last_export->new: last_export->old;
-    ASSERT_DIE(route);
+    log(L_INFO "%s: Recalculate best checking seq %lu", table->name, it->seq);
 
-    /* We know, that the route is from table, so we can get its index like this: */
-    nets_to_recalc[nets_count] = NET_TO_INDEX(route->net);
-    if (route->id == 2001)
-      log("route %p %i arr idx %N hash %x uc %i ni %p it %p net %p net type %i jour it %p", route, route->id,route->net,
-     NET_TO_INDEX(route->net)->hash, NET_TO_INDEX(route->net)->uc, NET_TO_INDEX(route->net), it, route->net, route->net->type, it);
+    /* Already seen */
+    if (bmap_test(&seq_map, it->seq))
+      continue;
+
+    SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it.li, it);
+    struct rt_pending_export *rpe_last_net = rpe;
+
+    /* Squash subsequent requests for the same net */
+    for (struct rt_pending_export *rpex = rpe;
+	rpex = atomic_load_explicit(&rpex->next, memory_order_acquire);
+	rpe_last_net = rpex)
+      bmap_set(&seq_map, rpex->it.seq);
+
+    const rte *r = rpe->it.new ?: rpe->it.old;
+    ASSERT_DIE(r);
+
+    const net_addr *na = r->net;
+    const struct netindex *ni = NET_TO_INDEX(na);
+   
+    /* Actually recalculate best route for this net */
+    log(L_INFO "%s: Going for best in %lu", table->name, it->seq);
+    struct rt_pending_export *brpe = rte_recalculate_best_for_net(table, nets, ni);
+    log(L_INFO "%s: Recalculated best for %lu: %p", table->name, it->seq, brpe);
+
+    if (brpe)
+      table->last_best_rpe = brpe;
+
+    if (!rpe_last || rpe_last_net->it.seq > rpe_last->it.seq)
+      rpe_last = rpe_last_net;
   }
 
-  if (nets_count == 0)
-    return 0;
+  /* We did read something */
+  if (rpe_last)
 
-  struct netindex ** nets_deduplicated = tmp_alloc(sizeof(rte *) * (nets_count + 1));
-  u32 dedupl_ptr = 1; //couting from zero would destroy hash
-  u32 *hash_dedup = tmp_allocz(sizeof(u32) * nets_count);
-
-  for (int i = nets_count - 1; i >= 0; i--)
-  {
-    struct netindex *ni = nets_to_recalc[i];
-    u32 hash = ni->index % nets_count;
-    //log("ni index %i ni %p i %i", ni->index, ni, i);
-
-    if (hash_dedup[hash] == 0)
+    /* Best is idle, flush immediately */
+    if (!table->last_best_rpe)
     {
-      /* the net is definitely not here yet */
-      hash_dedup[hash] = dedupl_ptr;
-      //log("hash_dedup[hash %i] = dedupl_ptr %i nets dedup %p", hash, dedupl_ptr, ni);
-      nets_deduplicated[dedupl_ptr] = ni;
-      dedupl_ptr++;
+      rt_trace(table, D_EVENTS, "Best route recalculation done, no change, flushing all.");
+      lfjour_release(&table->all_req, &rpe_last->it.li);
     }
+
+    /* Announced best, need an anchor to all */
     else
     {
-      /* we might have seen the net */
-      if (nets_deduplicated[hash_dedup[hash]]->index != ni->index)
-      {
-        /* hash failed, we have to go through the field */
-        u32 j = hash_dedup[hash] + 1;
-        for (; j < dedupl_ptr && nets_deduplicated[j]->index != ni->index; j++);
-
-        /* if the j did not reach the end of deduplicated nets, the requested net is already there */
-        if (j == dedupl_ptr)
-        {
-          /* A bit of bad luck, but now we know we can add the net */
-          nets_deduplicated[dedupl_ptr] = ni;
-          //log("repeated hash %i dedupl_ptr %i nets dedup %p", hash, dedupl_ptr, ni);
-          dedupl_ptr++;
-        }
-      }
+      rt_trace(table, D_EVENTS, "Best route recalculation done, last rpe in best: %lu -> all %lu.", table->last_best_rpe->it.seq, rpe_last->it.seq);
+      table->last_best_rpe->all = rpe_last;
     }
-  }
 
-  struct rt_pending_export *last_best_rpe = NULL;
-
-  for (u32 i = dedupl_ptr - 1; i > 0; i--)
-  {
-    struct netindex *ni = nets_deduplicated[i];
-    //log("go to recalculate ni %p i %i %N", ni, i, ni->addr);
-    struct rt_pending_export *lbr = rte_recalculate_best_for_net(table, nets, ni);
-    if (lbr)
-      last_best_rpe = lbr;
-  }
-
-  SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it, last_export);
-  if (last_best_rpe)
-  {
-    /* Announced best, need an anchor to all */
-    last_best_rpe->all = rpe;
-  }
-  else if (!lfjour_pending_items(&table->export_best.journal) && table->all_req.cur)
-  {
-    /* Best is idle, flush its recipient immediately */
-    lfjour_release(&table->all_req, &rpe->it.li);
-  }
-
-  return nets_count == nets_to_recalc_size - 1;
+  bmap_free(&seq_map);
 }
 
 int
