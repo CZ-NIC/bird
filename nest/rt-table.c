@@ -1319,7 +1319,7 @@ export_filter(struct channel *c, rte *rt, int silent)
   if (bmap_test(&(c)->export_##kind##_map, (e)->id) == (state)) break; \
   EXPORT_FLAG_BAD((c), (e)); \
   if (state) bmap_set(&(c)->export_##kind##_map, (e)->id); \
-  else bmap_clear(&(c)->export_##kind##_map, (e)->id); \
+  else{ bmap_clear(&(c)->export_##kind##_map, (e)->id); log("{ bmap_clear(&(c)->export_##kind##_map, %p %i", (e), (e)->id);}\
 } while (0)
 
 /**
@@ -1362,8 +1362,8 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
 
   /* Update accepted map to keep track whether this route needs to be
    * withdrawn in future. */
-  if (old)
-    bmap_clear(&c->export_accepted_map, old->id);
+  if (old){
+    bmap_clear(&c->export_accepted_map, old->id);log("bmap_clear(&c->export_accepted_map, old->id); old %p %i", old, old->id);}
 
   if (new)
     bmap_set(&c->export_accepted_map, new->id);
@@ -1427,6 +1427,7 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old, const rte *tr
       /* Drop the old rejected bit from the map, the old route id
        * gets released after exports. */
       bmap_clear(&c->export_rejected_map, old->id);
+      log("bmap_clear(&c->export_rejected_map, old->id); %p %i", old, old->id);
 
       /* Treat old rejected as never seen. */
       old = NULL;
@@ -1795,6 +1796,7 @@ rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
     {
       RT_NOTIFY_DEBUG("route %u id %u is obsolete", i, r->id);
       bmap_clear(&c->export_rejected_map, r->id);
+      log("bmap_clear(&c->export_rejected_map, r->id);RT_NOTIFY_DEBUG obsolete %p %i", r, r->id);
     }
 
     /* Mark invalid as rejected */
@@ -2864,14 +2866,15 @@ rt_net_feed_validate_first(
     const struct rt_pending_export *first)
 {
   /* Inconsistent input */
-  if (!first_in_net != !last_in_net)
-    RT_READ_RETRY(tr);
+  if (!first_in_net != !last_in_net){
+    RT_READ_RETRY(tr);log("if (!first_in_net != !last_in_net)");}
 
   if (!first)
     return first_in_net;
 
   /* Export item validity check: we must find it between first_in_net and last_in_net */
   const struct rt_pending_export *rpe = first_in_net;
+  log("rpe rt_net_feed_validate_first %p first_in %p last_in %p first %p", rpe, first_in_net, last_in_net,first);
   while (rpe)
     if (rpe == first)
       return first;
