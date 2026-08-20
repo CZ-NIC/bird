@@ -53,7 +53,7 @@ kbr_proto:
    kbr_proto_start proto_name '{' kbr_proto_opts '}';
 
 
-dynamic_attr: KBR_SOURCE { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_ENUM_KBR_SOURCE, EA_KBR_SOURCE); } ;
+dynamic_attr: KBR_SOURCE { $$ = f_new_dynamic_attr($1, EAF_TYPE_INT, T_ENUM_KBR_SOURCE, EA_KBR_SOURCE); } ;
 
 CF_CODE
 

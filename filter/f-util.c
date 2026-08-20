@@ -329,7 +329,7 @@ ca_lookup(pool *p, const char *name, int f_type)
     }
 
     cas = mb_allocz(config_pool, sizeof(struct ca_storage) + strlen(name) + 1);
-    cas->fda = f_new_dynamic_attr(ea_type, f_type, EA_CUSTOM(id));
+    cas->fda = f_new_dynamic_attr(NULL, ea_type, f_type, EA_CUSTOM(id));
     cas->uc = 1;
 
     strcpy(cas->name, name);

@@ -882,20 +882,20 @@ symbol_value: symbol_known
  ;
 
 static_attr:
-   FROM    { $$ = f_new_static_attr(T_IP,         SA_FROM,	0); }
- | GW      { $$ = f_new_static_attr(T_IP,         SA_GW,	0); }
- | NET     { $$ = f_new_static_attr(T_NET,	  SA_NET,	1); }
- | PROTO   { $$ = f_new_static_attr(T_STRING,     SA_PROTO,	1); }
- | SOURCE  { $$ = f_new_static_attr(T_ENUM_RTS,   SA_SOURCE,	1); }
- | SCOPE   { $$ = f_new_static_attr(T_ENUM_SCOPE, SA_SCOPE,	0); }
- | DEST    { $$ = f_new_static_attr(T_ENUM_RTD,   SA_DEST,	0); }
- | IFNAME  { $$ = f_new_static_attr(T_STRING,     SA_IFNAME,	0); }
- | IFINDEX { $$ = f_new_static_attr(T_INT,        SA_IFINDEX,	1); }
- | WEIGHT  { $$ = f_new_static_attr(T_INT,        SA_WEIGHT,	0); }
- | PREFERENCE { $$ = f_new_static_attr(T_INT,	  SA_PREF,	0); }
- | GW_MPLS { $$ = f_new_static_attr(T_INT,        SA_GW_MPLS,	0); }
- | GW_MPLS_STACK { $$ = f_new_static_attr(T_CLIST, SA_GW_MPLS_STACK,	0); }
- | ONLINK  { $$ = f_new_static_attr(T_BOOL,       SA_ONLINK,	0); }
+   FROM    { $$ = f_new_static_attr($1, T_IP,         SA_FROM,	0); }
+ | GW      { $$ = f_new_static_attr($1, T_IP,         SA_GW,	0); }
+ | NET     { $$ = f_new_static_attr($1, T_NET,	  SA_NET,	1); }
+ | PROTO   { $$ = f_new_static_attr($1, T_STRING,     SA_PROTO,	1); }
+ | SOURCE  { $$ = f_new_static_attr($1, T_ENUM_RTS,   SA_SOURCE,	1); }
+ | SCOPE   { $$ = f_new_static_attr($1, T_ENUM_SCOPE, SA_SCOPE,	0); }
+ | DEST    { $$ = f_new_static_attr($1, T_ENUM_RTD,   SA_DEST,	0); }
+ | IFNAME  { $$ = f_new_static_attr($1, T_STRING,     SA_IFNAME,	0); }
+ | IFINDEX { $$ = f_new_static_attr($1, T_INT,        SA_IFINDEX,	1); }
+ | WEIGHT  { $$ = f_new_static_attr($1, T_INT,        SA_WEIGHT,	0); }
+ | PREFERENCE { $$ = f_new_static_attr($1, T_INT,	  SA_PREF,	0); }
+ | GW_MPLS { $$ = f_new_static_attr($1, T_INT,        SA_GW_MPLS,	0); }
+ | GW_MPLS_STACK { $$ = f_new_static_attr($1, T_CLIST, SA_GW_MPLS_STACK,	0); }
+ | ONLINK  { $$ = f_new_static_attr($1, T_BOOL,       SA_ONLINK,	0); }
  ;
 
 term_dot_method: term '.' { f_method_call_start($1); } method_name_cont { f_method_call_end(); $$ = $4; };

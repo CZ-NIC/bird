@@ -502,35 +502,35 @@ bgp_proto_channel: bgp_channel_start bgp_channel_opt_list bgp_channel_end;
 
 
 dynamic_attr: BGP_ORIGIN
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_ENUM_BGP_ORIGIN, EA_CODE(PROTOCOL_BGP, BA_ORIGIN));	$$.flags = BAF_TRANSITIVE; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_INT, T_ENUM_BGP_ORIGIN, EA_CODE(PROTOCOL_BGP, BA_ORIGIN));	$$.flags = BAF_TRANSITIVE; } ;
 dynamic_attr: BGP_PATH
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));		$$.flags = BAF_TRANSITIVE; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));		$$.flags = BAF_TRANSITIVE; } ;
 dynamic_attr: BGP_NEXT_HOP
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_IP_ADDRESS, T_IP, EA_CODE(PROTOCOL_BGP, BA_NEXT_HOP));	$$.flags = BAF_TRANSITIVE; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_IP_ADDRESS, T_IP, EA_CODE(PROTOCOL_BGP, BA_NEXT_HOP));	$$.flags = BAF_TRANSITIVE; } ;
 dynamic_attr: BGP_MED
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC));	$$.flags = BAF_OPTIONAL; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC));	$$.flags = BAF_OPTIONAL; } ;
 dynamic_attr: BGP_LOCAL_PREF
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF));		$$.flags = BAF_TRANSITIVE; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF));		$$.flags = BAF_TRANSITIVE; } ;
 dynamic_attr: BGP_ATOMIC_AGGR
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_ATOMIC_AGGR)); $$.flags = BAF_TRANSITIVE; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_ATOMIC_AGGR)); $$.flags = BAF_TRANSITIVE; } ;
 dynamic_attr: BGP_AGGREGATOR
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_AGGREGATOR));	$$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_AGGREGATOR));	$$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
 dynamic_attr: BGP_COMMUNITY
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));	$$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));	$$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
 dynamic_attr: BGP_ORIGINATOR_ID
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID, T_QUAD, EA_CODE(PROTOCOL_BGP, BA_ORIGINATOR_ID));	$$.flags = BAF_OPTIONAL; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_ROUTER_ID, T_QUAD, EA_CODE(PROTOCOL_BGP, BA_ORIGINATOR_ID));	$$.flags = BAF_OPTIONAL; } ;
 dynamic_attr: BGP_CLUSTER_LIST
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_CLUSTER_LIST));	$$.flags = BAF_OPTIONAL; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_CLUSTER_LIST));	$$.flags = BAF_OPTIONAL; } ;
 dynamic_attr: BGP_EXT_COMMUNITY
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_EC_SET, T_ECLIST, EA_CODE(PROTOCOL_BGP, BA_EXT_COMMUNITY));	$$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_EC_SET, T_ECLIST, EA_CODE(PROTOCOL_BGP, BA_EXT_COMMUNITY));	$$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
 dynamic_attr: BGP_PMSI_TUNNEL
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_PMSI_TUNNEL)); $$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_PMSI_TUNNEL)); $$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
 dynamic_attr: BGP_AIGP
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_AIGP));	$$.flags = BAF_OPTIONAL; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_AIGP));	$$.flags = BAF_OPTIONAL; } ;
 dynamic_attr: BGP_LARGE_COMMUNITY
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_LC_SET, T_LCLIST, EA_CODE(PROTOCOL_BGP, BA_LARGE_COMMUNITY)); $$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_LC_SET, T_LCLIST, EA_CODE(PROTOCOL_BGP, BA_LARGE_COMMUNITY)); $$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
 dynamic_attr: BGP_OTC
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_ONLY_TO_CUSTOMER));	$$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
+	{ $$ = f_new_dynamic_attr($1, EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_ONLY_TO_CUSTOMER));	$$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
 
 custom_attr: ATTRIBUTE BGP expr type symbol ';' {
   if ($3 > 255 || $3 < 1)
@@ -541,7 +541,7 @@ custom_attr: ATTRIBUTE BGP expr type symbol ';' {
     cf_error("Attribute BGP.%d already known as %s", $3, bgp_attr_name($3));
 
   struct f_dynamic_attr *a = cfg_alloc(sizeof(struct f_dynamic_attr));
-  *a = f_new_dynamic_attr(f_type_attr($4), T_BYTESTRING, EA_CODE(PROTOCOL_BGP, $3));
+  *a = f_new_dynamic_attr($5, f_type_attr($4), T_BYTESTRING, EA_CODE(PROTOCOL_BGP, $3));
   a->flags = BAF_TRANSITIVE | BAF_OPTIONAL;
   cf_define_symbol(new_config, $5, SYM_ATTRIBUTE, attribute, a);
 };
@@ -553,7 +553,7 @@ term: ASPA_CHECK_DOWNSTREAM '(' rtable ')' { $$ =
   f_new_inst(FI_ASPA_CHECK_EXPLICIT,
       f_new_inst(FI_EA_GET,
 	f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL, }),
-	f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH))
+	f_new_dynamic_attr(NULL, EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH))
       ),
       f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 0, }),
       $3
@@ -564,7 +564,7 @@ term: ASPA_CHECK_UPSTREAM '(' rtable ')' { $$ =
   f_new_inst(FI_ASPA_CHECK_EXPLICIT,
       f_new_inst(FI_EA_GET,
 	f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL, }),
-	f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH))
+	f_new_dynamic_attr(NULL, EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH))
       ),
       f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 1, }),
       $3

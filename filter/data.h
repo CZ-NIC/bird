@@ -121,6 +121,7 @@ extern const struct f_class *f_base_types[0x7f];	/* TODO: Autocompute the limit 
 
 /* Dynamic attribute definition (eattrs) */
 struct f_dynamic_attr {
+  struct symbol *sym;	/* EA keyword */
   u8 type;		/* EA type (EAF_*) */
   u8 bit;		/* For bitfield accessors */
   enum f_type f_type;	/* Filter type */
@@ -149,7 +150,8 @@ enum f_sa_code {
 struct f_static_attr {
   enum f_type f_type;		/* Filter type */
   enum f_sa_code sa_code;	/* Static attribute id */
-  int readonly:1;			/* Don't allow writing */
+  int readonly:1;		/* Don't allow writing */
+  struct symbol *sym;		/* Attribute keyword */
 };
 
 /* Filter l-value type */

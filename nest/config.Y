@@ -992,13 +992,13 @@ proto_patt2:
  | TEXT { $$.ptr = $1; $$.patt = 1; }
  ;
 
-dynamic_attr: IGP_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_GEN_IGP_METRIC); } ;
+dynamic_attr: IGP_METRIC { $$ = f_new_dynamic_attr($1, EAF_TYPE_INT, T_INT, EA_GEN_IGP_METRIC); } ;
 
-dynamic_attr: ASPA_PROVIDERS { $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_ASPA_PROVIDERS); } ;
+dynamic_attr: ASPA_PROVIDERS { $$ = f_new_dynamic_attr($1, EAF_TYPE_INT_SET, T_CLIST, EA_ASPA_PROVIDERS); } ;
 
-dynamic_attr: MPLS_LABEL  { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_MPLS_LABEL); } ;
-dynamic_attr: MPLS_POLICY { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_ENUM_MPLS_POLICY, EA_MPLS_POLICY); } ;
-dynamic_attr: MPLS_CLASS  { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_MPLS_CLASS); } ;
+dynamic_attr: MPLS_LABEL  { $$ = f_new_dynamic_attr($1, EAF_TYPE_INT, T_INT, EA_MPLS_LABEL); } ;
+dynamic_attr: MPLS_POLICY { $$ = f_new_dynamic_attr($1, EAF_TYPE_INT, T_ENUM_MPLS_POLICY, EA_MPLS_POLICY); } ;
+dynamic_attr: MPLS_CLASS  { $$ = f_new_dynamic_attr($1, EAF_TYPE_INT, T_INT, EA_MPLS_CLASS); } ;
 
 
 CF_CODE
