@@ -106,6 +106,7 @@ struct f_val {
 /* Detailed type/class definitions */
 struct f_class {
   enum f_type id;		/* T_* for static types */
+  byte ea_type;			/* EAF_TYPE_* */
   bool hidden;			/* Inaccessible for users from config */
   bool legacy_kw;		/* Accessed from type_kw in parser */
   const char *name;		/* String name */

@@ -46,6 +46,7 @@ static const struct f_class f_type_none = {
 
 static const struct f_class f_type_int = {
   .id = T_INT,
+  .ea_type = EAF_TYPE_INT,
   .legacy_kw = true,
   .name = "int",
   .pretty_name = "Integer",
@@ -68,6 +69,7 @@ static const struct f_class f_type_pair = {
 
 static const struct f_class f_type_quad = {
   .id = T_QUAD,
+  .ea_type = EAF_TYPE_ROUTER_ID,
   .legacy_kw = true,
   .name = "quad",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
@@ -141,6 +143,7 @@ static const struct f_class f_type_enum_net_evpn_type = {
 
 static const struct f_class f_type_ip = {
   .id = T_IP,
+  .ea_type = EAF_TYPE_IP_ADDRESS,
   .legacy_kw = true,
   .name = "ip",
   .pretty_name = "IP address",
@@ -163,6 +166,7 @@ f_string_compare(F_CLASS_COMPARE)
 
 static const struct f_class f_type_string = {
   .id = T_STRING,
+  .ea_type = EAF_TYPE_STRING,
   .legacy_kw = true,
   .name = "string",
   .pretty_name = "String",
@@ -171,6 +175,7 @@ static const struct f_class f_type_string = {
 
 static const struct f_class f_type_bytestring = {
   .id = T_BYTESTRING,
+  .ea_type = EAF_TYPE_OPAQUE,
   .legacy_kw = true,
   .name = "bytestring",
   .pretty_name = "Bytestring",
@@ -185,6 +190,7 @@ static const struct f_class f_type_bgpmask = {
 
 static const struct f_class f_type_bgppath = {
   .id = T_PATH,
+  .ea_type = EAF_TYPE_AS_PATH,
   .legacy_kw = true,
   .name = "bgppath",
   .empty = { .type = T_PATH, .val.ad = &null_adata },
@@ -193,6 +199,7 @@ static const struct f_class f_type_bgppath = {
 
 static const struct f_class f_type_clist = {
   .id = T_CLIST,
+  .ea_type = EAF_TYPE_INT_SET,
   .legacy_kw = true,
   .name = "clist",
   .empty = { .type = T_CLIST, .val.ad = &null_adata },
@@ -207,6 +214,7 @@ static const struct f_class f_type_ec = {
 
 static const struct f_class f_type_eclist = {
   .id = T_ECLIST,
+  .ea_type = EAF_TYPE_EC_SET,
   .legacy_kw = true,
   .name = "eclist",
   .empty = { .type = T_ECLIST, .val.ad = &null_adata },
@@ -221,6 +229,7 @@ static const struct f_class f_type_lc = {
 
 static const struct f_class f_type_lclist = {
   .id = T_LCLIST,
+  .ea_type = EAF_TYPE_LC_SET,
   .legacy_kw = true,
   .name = "lclist",
   .empty = { .type = T_LCLIST, .val.ad = &null_adata },
