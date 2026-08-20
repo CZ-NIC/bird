@@ -157,7 +157,7 @@ struct f_static_attr {
 /* Filter l-value type */
 enum f_lval_type {
   F_LVAL_VARIABLE,
-  F_LVAL_PREFERENCE,
+  F_LVAL_CONSTANT,
   F_LVAL_SA,
   F_LVAL_EA,
 };

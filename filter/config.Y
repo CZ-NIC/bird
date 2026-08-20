@@ -310,6 +310,7 @@ static struct f_inst *
 f_lval_getter(struct f_lval *lval)
 {
   switch (lval->type) {
+    case F_LVAL_CONSTANT:	return f_new_inst(FI_CONSTANT, *lval->sym->val);
     case F_LVAL_VARIABLE:	return f_new_inst(FI_VAR_GET, lval->sym);
     case F_LVAL_SA:		return f_new_inst(FI_RTA_GET, lval->rte, lval->sa);
     case F_LVAL_EA:		return f_new_inst(FI_EA_GET, lval->rte, lval->da);
@@ -321,6 +322,9 @@ static struct f_inst *
 f_lval_setter(struct f_lval *lval, struct f_inst *expr)
 {
   switch (lval->type) {
+    case F_LVAL_CONSTANT:
+      cf_error("Can't modify constant %s.", lval->sym->name);
+
     case F_LVAL_VARIABLE:
       return f_new_inst(FI_VAR_SET, expr, lval->sym);
 
@@ -379,7 +383,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list var_list_r function_call symbol_value bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
+%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list var_list_r function_call bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
 %type <fda> dynamic_attr
 %type <fsa> static_attr
 %type <f> filter where_filter
@@ -793,7 +797,7 @@ switch_body: /* EMPTY */ { $$ = NULL; }
  ;
 
 bgp_path_expr:
-   symbol_value { $$ = $1; }
+   lvalue { $$ = f_lval_getter(&$1); }
  | '(' term ')' { $$ = $2; }
  ;
 
@@ -876,24 +880,6 @@ function_call:
    }
  ;
 
-symbol_value: symbol_known
-  {
-    switch ($1->class) {
-      case SYM_CONSTANT_RANGE:
-	$$ = f_new_inst(FI_CONSTANT, *($1->val));
-	break;
-      case SYM_VARIABLE_RANGE:
-	$$ = f_new_inst(FI_VAR_GET, $1);
-	break;
-      case SYM_ATTRIBUTE:
-	$$ = f_new_inst(FI_EA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), *$1->attribute);
-	break;
-      default:
-	cf_error("Can't get value of symbol %s", $1->name);
-    }
-  }
- ;
-
 static_attr:
    FROM    { $$ = f_new_static_attr($1, T_IP,         SA_FROM,	0); }
  | GW      { $$ = f_new_static_attr($1, T_IP,         SA_GW,	0); }
@@ -952,13 +938,10 @@ term:
  | '!' term		{ $$ = f_new_inst(FI_NOT, $2); }
  | DEFINED '(' term ')' { $$ = f_new_inst(FI_DEFINED, $3); }
 
- | symbol_value   { $$ = $1; }
  | constant { $$ = $1; }
  | constructor { $$ = $1; }
 
- | static_attr { $$ = f_new_inst(FI_RTA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), $1); }
-
- | dynamic_attr { $$ = f_new_inst(FI_EA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), $1); }
+ | lvalue { $$ = f_lval_getter(&$1); }
 
  | term_dot_method
 
@@ -1094,9 +1077,12 @@ get_cf_position:
 };
 
 lvalue:
-   CF_SYM_KNOWN {
+   symbol_known {
      switch ($1->class)
      {
+       case SYM_CONSTANT_RANGE:
+	 $$ = (struct f_lval) { .type = F_LVAL_CONSTANT, .sym = $1 };
+	 break;
        case SYM_VARIABLE_RANGE:
 	 $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1 };
          break;
@@ -1108,7 +1094,7 @@ lvalue:
 	 cf_error("Access to %s not possible in filters", $1->name);
      }
    }
- | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1, .rte = f_const_empty(T_ROUTE) }; } /* TODO store SA and DA keyword name */
+ | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1, .rte = f_const_empty(T_ROUTE) }; }
  | dynamic_attr { $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1, .rte = f_const_empty(T_ROUTE) }; }
  ;
 
