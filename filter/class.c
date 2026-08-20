@@ -1,6 +1,5 @@
-
 /*
- *	Filters: utility functions
+ *	Filters: Data classes
  *
  *	(c) 1998 Pavel Machek <pavel@ucw.cz>
  *	(c) 2019 Maria Matejka <mq@jmq.cz>
@@ -29,9 +28,24 @@
 #include "conf/conf.h"
 #include "conf/cf-parse.tab.h"
 
-#include "filter/class-m4-auto.h"
+#include "filter/class-m4-auto-pre.c"
 
-SUBLAMBDA(COMPARE, int, F_CLASS_COMPARE)
+SUBLAMBDA(COMPARE, int, F_CLASS_COMPARE);
+
+#ifdef M4_AUTO
+AUX_SECTION(INCH, H_BEGIN, [[
+/*
+ *	Filters: Data classes
+ *
+ *	Automatically generated from ]]m4_builtin(__file__)[[ by ]]AUX_MACROSET()[[
+ */
+#ifndef _BIRD_FILTER_CLASS_M4_AUTO_H_
+#define _BIRD_FILTER_CLASS_M4_AUTO_H_
+]],[[
+#endif
+]])
+#endif
+
 
 static const struct f_class f_type_void = {
   .id = T_VOID,

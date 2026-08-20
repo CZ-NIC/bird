@@ -105,20 +105,13 @@ endef
 
 clean = $(eval $(call clean_in,$(1)))
 
-
-# Generic rule for m4-auto generated files
-$(objdir)/%-m4-auto.h: $(srcdir)/lib/macro.m4 $(srcdir)/%.c $(objdir)/.dir-stamp
-	$(M4) $(M4FLAGS) -DTARGET=AUTO -P $^ >$@
-
-$(objdir)/%-m4-auto.h: $(srcdir)/lib/macro.m4 $(objdir)/%.c
-	$(M4) $(M4FLAGS) -DTARGET=AUTO -P $^ >$@
-
 define m4_auto_in =
-$(o)$(1:.c=.o): $(o)$(1:.c=-m4-auto.h)
+$(o)$(1:.c=.o): $(o)$(1:.c=-m4-auto-pre.c)
+prepare: $(o)$(1:.c=-m4-auto-in.h)
 endef
 
-m4_auto = $(eval $(foreach f, $(1), $(call m4_auto_in, $(f))))
-
+m4_auto = $(eval $(foreach f, $(1), $(call m4_auto_in,$(f))))
+m4_tools :=
 
 # Include main Makefiles of the directories
 include $(addsuffix /Makefile,$(addprefix $(srcdir)/,$(dirs)))
@@ -150,6 +143,20 @@ $(objdir)/%.S: $(srcdir)/%.c | prepare
 $(objdir)/%.S: $(objdir)/%.c | prepare
 	$(E)echo CC -o $@ -S $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -S $<
+
+# Generic rules for m4-auto generated files
+define m4_generic_rule_one =
+$(objdir)/%-m4-auto-$(1): $(m4_tools) $(3)
+	$(M4) $(M4FLAGS) -DTARGET=$(2) -P $$^ >$$@
+endef
+
+define m4_generic_rule =
+$(call m4_generic_rule_one,$(1),$(2),$(srcdir)/%.c $(objdir)/.dir-stamp)
+$(call m4_generic_rule_one,$(1),$(2),$(objdir)/%.c)
+endef
+
+$(eval $(call m4_generic_rule,pre.c,PREC))
+$(eval $(call m4_generic_rule,in.h,INCH))
 
 # Finally include the computed dependencies:
 DEPS = $(shell find $(objdir) -name '*.d')

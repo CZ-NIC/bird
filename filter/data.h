@@ -16,6 +16,8 @@
 /* Type numbers must be in 0..0xff range */
 #define T_MASK 0xff
 
+#include "filter/class-m4-auto-in.h"
+
 /* Internal types */
 enum f_type {
 /* Nothing. Simply nothing. */

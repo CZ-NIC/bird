@@ -5,3 +5,5 @@ $(all-daemon)
 tests_src := bitmap_test.c heap_test.c buffer_test.c event_test.c flowspec_test.c bitops_test.c patmatch_test.c fletcher16_test.c slist_test.c checksum_test.c lists_test.c mac_test.c ip_test.c hash_test.c printf_test.c slab_test.c
 tests_targets := $(tests_targets) $(tests-target-files)
 tests_objs := $(tests_objs) $(src-o-files)
+
+m4_tools += $(addprefix $(s),auto.m4 lambda.m4)
