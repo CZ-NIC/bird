@@ -226,7 +226,7 @@ struct rt_exporter {
   netindex_hash *netindex;			/* Table for net <-> id conversion */
   void (*stopped)(struct rt_exporter *);	/* Callback when exporter can stop */
   void (*cleanup_done)(struct rt_exporter *, u64 end);	/* Callback when cleanup has been done */
-  struct rt_export_feed *(*feed_net)(struct rt_exporter *, u32, struct bmap *, bool (*)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *, const struct rt_export_item *first);
+  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, u32, struct bmap *, bool (*)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *, const struct rt_export_item *first);
   void (*feed_cleanup)(struct rt_exporter *, struct rt_export_feeder *);
 };
 

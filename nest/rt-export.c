@@ -147,14 +147,18 @@ rt_export_get(struct rt_export_request *r)
       rtex_trace(r, D_ROUTES, "Expediting %N feed due to pending update %lu", n, update->seq);
       if (r->feeder.domain.rtable)
       {
-	LOCK_DOMAIN(rtable, r->feeder.domain);
-	feed = e->feed_net(e, ni->index, &r->seq_map, NULL, NULL, update);
-	UNLOCK_DOMAIN(rtable, r->feeder.domain);
+        LOCK_DOMAIN(rtable, r->feeder.domain);
+        //feed = e->feed_net(e, NULL, ni->index, &r->seq_map, NULL, NULL, update);
+        feed = e->feed_net(e, NULL, ni->index, &r->seq_map, NULL, NULL, update);
+        UNLOCK_DOMAIN(rtable, r->feeder.domain);
       }
       else
-	feed = e->feed_net(e, ni->index, &r->seq_map, NULL, NULL, update);
-
-      ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
+      {
+        RCU_ANCHOR(u);
+        feed = e->feed_net(e, u, ni->index, &r->seq_map, NULL, NULL, update);
+      }
+ 
+       ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
 
       r->stats.updates_received += feed->count_routes;
       EXPORT_FOUND(RT_EXPORT_FEED);
@@ -254,11 +258,11 @@ rt_alloc_feed(uint routes, uint exports)
 }
 
 static struct rt_export_feed *
-rt_export_get_next_feed(struct rt_export_feeder *f, struct bmap *seen)
+rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u, struct bmap *seen)
 {
-  for (uint retry = 0; retry < ~0U; retry++)
+  for (uint retry = 0; retry < (u ? 1024 : ~0U); retry++)
   {
-    //ASSERT_DIE(u || DOMAIN_IS_LOCKED(rtable, f->domain));
+    ASSERT_DIE(u || DOMAIN_IS_LOCKED(rtable, f->domain));
 
     struct rt_exporter *e = atomic_load_explicit(&f->exporter, memory_order_acquire);
     if (!e)
@@ -267,14 +271,12 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct bmap *seen)
       return NULL;
     }
 
-    //log("feed index %i", f->feed_index);
-    struct rt_export_feed *feed = e->feed_net(e, f->feed_index, seen,
+    struct rt_export_feed *feed = e->feed_net(e, u, f->feed_index, seen,
 	rt_net_is_feeding_feeder, f, NULL);
     if (feed == &rt_feed_index_out_of_range)
     {
       rtex_trace(f, D_ROUTES, "Nothing more to feed", f->feed_index);
       f->feed_index = ~0;
-      //log("feed index %i", f->feed_index);
       return NULL;
     }
 
@@ -293,7 +295,7 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct bmap *seen)
     return feed;
   }
 
-  return NULL;
+  RCU_RETRY_FAST(u);
 }
 
 static bool rt_feeding_done(struct rt_export_feeder *f);
@@ -307,11 +309,14 @@ rt_export_next_feed(struct rt_export_feeder *f, struct bmap *seen)
   if (f->domain.rtable)
   {
     LOCK_DOMAIN(rtable, f->domain);
-    feed = rt_export_get_next_feed(f, seen);
+    feed = rt_export_get_next_feed(f, NULL, seen);
     UNLOCK_DOMAIN(rtable, f->domain);
   }
   else
-    feed = rt_export_get_next_feed(f, seen);
+  {
+    RCU_ANCHOR(u);
+    feed = rt_export_get_next_feed(f, u, seen);
+  }
 
   if (feed)
     return feed;
@@ -395,8 +400,8 @@ void rt_export_refeed_request(struct rt_export_request *rer, struct rt_feeding_r
   bmap_reset(&rer->feed_map, 4);
   rt_export_refeed_feeder(&rer->feeder, rfr);
   rt_export_change_state(rer, BIT32_ALL(TES_FEEDING, TES_PARTIAL, TES_READY), TES_PARTIAL);
-  if (rer->r.event)
-    ev_send(rer->r.target, rer->r.event);
+  if (rer->r.event){log("event rt_export_refeed_request");
+    ev_send(rer->r.target, rer->r.event);}
 }
 
 void
@@ -487,6 +492,10 @@ rt_exporter_push(struct rt_exporter *e, const struct rt_export_item *uit)
       lit->seq, (uit->new ?: uit->old)->net,
       uit->old, uit->old ? uit->old->id : 0,
       uit->new, uit->new ? uit->new->id : 0);
+  log( "Announcing change %lu at %N: %p (%u) -> %p (%u)",
+      lit->seq, (uit->new ?: uit->old)->net,
+      uit->old, uit->old ? uit->old->id : 0,
+      uit->new, uit->new ? uit->new->id : 0);
 
   lfjour_push_commit(&e->journal);
 
@@ -547,7 +556,10 @@ rt_feeder_unsubscribe(struct rt_export_feeder *f)
     UNLOCK_DOMAIN(rtable, f->domain);
   }
   else
+  {
+    RCU_ANCHOR(u);
     rt_feeder_do_unsubscribe(f);
+  }
 }
 
 void
