@@ -3,6 +3,8 @@ obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
 
+$(call m4_auto,data.c)
+
 #M4FLAGS_FILTERS=$(filter-out -s,$(M4FLAGS))
 M4FLAGS_FILTERS=$(M4FLAGS)
 

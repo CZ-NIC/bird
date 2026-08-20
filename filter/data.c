@@ -25,6 +25,9 @@
 #include "filter/f-inst.h"
 #include "filter/data.h"
 
+#include "filter/data-m4-auto.h"
+
+SUBLAMBDA(COMPARE, int, F_CLASS_COMPARE)
 
 static const struct f_class f_type_void = {
   .id = T_VOID,
@@ -42,79 +45,94 @@ static const struct f_class f_type_int = {
   .legacy_kw = true,
   .name = "int",
   .pretty_name = "Integer",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_bool = {
   .id = T_BOOL,
   .legacy_kw = true,
   .name = "bool",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_pair = {
   .id = T_PAIR,
   .legacy_kw = true,
   .name = "pair",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_quad = {
   .id = T_QUAD,
   .legacy_kw = true,
   .name = "quad",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_rts = {
   .id = T_ENUM_RTS,
   .name = "enum rts",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_bgp_origin = {
   .id = T_ENUM_BGP_ORIGIN,
   .name = "enum bgp_origin",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_scope = {
   .id = T_ENUM_SCOPE,
   .name = "enum scope",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_rtd = {
   .id = T_ENUM_RTD,
   .name = "enum rtd",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_roa = {
   .id = T_ENUM_ROA,
   .name = "enum roa",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_aspa = {
   .id = T_ENUM_ASPA,
   .name = "enum aspa",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_net_type = {
   .id = T_ENUM_NET_TYPE,
   .name = "enum net_type",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_ra_preference = {
   .id = T_ENUM_RA_PREFERENCE,
   .name = "enum ra_preference",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_af = {
   .id = T_ENUM_AF,
   .name = "enum af",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_mpls_policy = {
   .id = T_ENUM_MPLS_POLICY,
   .name = "enum mpls_policy",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_net_evpn_type = {
   .id = T_ENUM_NET_EVPN_TYPE,
   .name = "enum net_evpn_type",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_ip = {
@@ -122,26 +140,51 @@ static const struct f_class f_type_ip = {
   .legacy_kw = true,
   .name = "ip",
   .pretty_name = "IP address",
+  .compare = COMPARE(ipa_compare(v1->val.ip, v2->val.ip)),
 };
 
 static const struct f_class f_type_prefix = {
   .id = T_NET,
   .legacy_kw = true,
   .name = "prefix",
+  .compare = COMPARE(net_compare(v1->val.net, v2->val.net)),
 };
+
+static int
+f_string_compare(F_CLASS_COMPARE)
+{
+  int i = strcmp(v1->val.s, v2->val.s);
+  return (i > 0) - (i < 0);
+}
 
 static const struct f_class f_type_string = {
   .id = T_STRING,
   .legacy_kw = true,
   .name = "string",
   .pretty_name = "String",
+  .compare = f_string_compare,
 };
+
+static int
+f_bytestring_compare(F_CLASS_COMPARE)
+{
+  const struct adata *bs1 = v1->val.ad;
+  const struct adata *bs2 = v2->val.ad;
+
+  uint len = MIN(bs1->length, bs2->length);
+  int i = memcmp(bs1->data, bs2->data, len);
+  if (i)
+    return (i > 0) - (i < 0);
+  else
+    return (bs1->length > len) - (bs2->length > len);
+}
 
 static const struct f_class f_type_bytestring = {
   .id = T_BYTESTRING,
   .legacy_kw = true,
   .name = "bytestring",
   .pretty_name = "Bytestring",
+  .compare = f_bytestring_compare,
 };
 
 static const struct f_class f_type_bgpmask = {
@@ -155,6 +198,7 @@ static const struct f_class f_type_bgppath = {
   .legacy_kw = true,
   .name = "bgppath",
   .empty = { .type = T_PATH, .val.ad = &null_adata },
+  .compare = COMPARE(as_path_compare(v1->val.ad, v2->val.ad)),
 };
 
 static const struct f_class f_type_clist = {
@@ -168,6 +212,7 @@ static const struct f_class f_type_ec = {
   .id = T_EC,
   .legacy_kw = true,
   .name = "ec",
+  .compare = COMPARE(u64_cmp(v1->val.ec, v2->val.ec)),
 };
 
 static const struct f_class f_type_eclist = {
@@ -181,6 +226,7 @@ static const struct f_class f_type_lc = {
   .id = T_LC,
   .legacy_kw = true,
   .name = "lc",
+  .compare = COMPARE(lcomm_cmp(v1->val.lc, v2->val.lc)),
 };
 
 static const struct f_class f_type_lclist = {
@@ -194,12 +240,14 @@ static const struct f_class f_type_rd = {
   .id = T_RD,
   .legacy_kw = true,
   .name = "rd",
+  .compare = COMPARE(u64_cmp(v1->val.ec, v2->val.ec)),
 };
 
 static const struct f_class f_type_mac = {
   .id = T_MAC,
   .legacy_kw = true,
   .name = "mac",
+  .compare = COMPARE(mac_compare(v1->val.mac, v2->val.mac)),
 };
 
 static const struct f_class f_type_route = {
@@ -261,34 +309,37 @@ f_class_build(void)
   f_class_register_static(&f_type_routes);
 }
 
+const struct f_class *
+f_type_get_class(enum f_type t)
+{
+  return (t < ARRAY_SIZE(f_base_types)) ? f_base_types[t] : NULL;
+}
+
+
 const char *
 f_type_name(enum f_type t)
 {
-  const struct f_class *cls = NULL;
-  if (t < ARRAY_SIZE(f_base_types))
-    cls = f_base_types[t];
+  const struct f_class *cls = f_type_get_class(t);
 
-  else if ((t == T_SET) || (t == T_PREFIX_SET))
-    return "set";
-
-  return cls ? cls->name : tmp_sprintf("unknown_type_0x%x", t);
+  return
+    cls ? cls->name :
+    ((t == T_SET) || (t == T_PREFIX_SET)) ? "set" :
+    tmp_sprintf("unknown_type_0x%x", t);
 }
 
 const char *
 f_type_pretty_name(enum f_type t)
 {
-  const struct f_class *cls = NULL;
-  if (t < ARRAY_SIZE(f_base_types))
-    cls = f_base_types[t];
-
-  else if ((t == T_SET) || (t == T_PREFIX_SET))
-    return "Set";
+  const struct f_class *cls = f_type_get_class(t);
 
   if (cls)
     if (cls->pretty_name)
       return cls->pretty_name;
     else if (cls->name)
       return tmp_sprintf("Type %s", cls->name);
+
+  if ((t == T_SET) || (t == T_PREFIX_SET))
+    return "Set";
 
   return tmp_sprintf("Unknown type 0x%x", t);
 }
@@ -405,37 +456,14 @@ val_compare(const struct f_val *v1, const struct f_val *v2)
     return F_CMP_ERROR;
   }
 
-  switch (v1->type) {
-  case T_VOID:
+  const struct f_class *cls = f_type_get_class(v1->type);
+  if (cls == &f_type_void)
     return 0;
-  case T_ENUM:
-  case T_INT:
-  case T_BOOL:
-  case T_PAIR:
-  case T_QUAD:
-    return uint_cmp(v1->val.i, v2->val.i);
-  case T_EC:
-  case T_RD:
-    return u64_cmp(v1->val.ec, v2->val.ec);
-  case T_LC:
-    return lcomm_cmp(v1->val.lc, v2->val.lc);
-  case T_IP:
-    return ipa_compare(v1->val.ip, v2->val.ip);
-  case T_MAC:
-    return mac_compare(v1->val.mac, v2->val.mac);
-  case T_NET:
-    return net_compare(v1->val.net, v2->val.net);
-  case T_STRING:;
-    int i = strcmp(v1->val.s, v2->val.s);
-    return (i > 0) - (i < 0);
-  case T_PATH:
-    return as_path_compare(v1->val.ad, v2->val.ad);
-  case T_ROUTE:
-  /* Fall through */
-  case T_ROUTES_BLOCK:
-  default:
+
+  if (!cls || !cls->compare)
     return F_CMP_ERROR;
-  }
+
+  return cls->compare(v1, v2);
 }
 
 static inline int

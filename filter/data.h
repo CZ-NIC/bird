@@ -111,6 +111,9 @@ struct f_class {
   const char *name;		/* String name */
   const char *pretty_name;	/* More descriptive name */
   struct f_val empty;		/* Default value of uninitialized variables */
+
+#define F_CLASS_COMPARE		const struct f_val *v1, const struct f_val *v2
+  int (*compare)(F_CLASS_COMPARE);	/* Compare function */
 };
 
 void f_class_register_static(const struct f_class *);
