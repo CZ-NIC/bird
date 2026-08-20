@@ -8,7 +8,7 @@
  *
  */
 
-#define PARSER 1
+//#define PARSER 1
 
 #include "nest/bird.h"
 #include "lib/lists.h"
@@ -26,7 +26,7 @@
 #include "filter/f-inst.h"
 #include "filter/data.h"
 #include "conf/conf.h"
-#include "conf/cf-parse.tab.h"
+//#include "conf/cf-parse.tab.h"
 
 #include "filter/class-m4-auto-pre.c"
 
@@ -41,25 +41,41 @@ AUX_SECTION(INCH, H_BEGIN, [[
  */
 #ifndef _BIRD_FILTER_CLASS_M4_AUTO_H_
 #define _BIRD_FILTER_CLASS_M4_AUTO_H_
-]],[[
+]],)
+
+AUX_END_SECTION(INCH, H_END,,[[
 #endif
 ]])
+
+AUX_SECTION(INCH, H_ENUM,[[
+PACKED enum f_type {
+]],[[
+  T_SET,
+  T_PREFIX_SET,
+  T__MAX,
+};
+]])
+
+m4_define(FC_ID,[[H_ENUM()  $1,
+AUX_MUTE()]])
+#else
+#define FC_ID(x)  .id = x
 #endif
 
 
 static const struct f_class f_type_void = {
-  .id = T_VOID,
+  FC_ID(T_VOID),
   .name = "void",
 };
 
 static const struct f_class f_type_none = {
-  .id = T_NONE,
+  FC_ID(T_NONE),
   .hidden = true,
   .name = "none",
 };
 
 static const struct f_class f_type_int = {
-  .id = T_INT,
+  FC_ID(T_INT),
   .ea_type = EAF_TYPE_INT,
   .legacy_kw = true,
   .name = "int",
@@ -68,95 +84,119 @@ static const struct f_class f_type_int = {
 };
 
 static const struct f_class f_type_bool = {
-  .id = T_BOOL,
+  FC_ID(T_BOOL),
   .legacy_kw = true,
   .name = "bool",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_pair = {
-  .id = T_PAIR,
+  FC_ID(T_PAIR),
   .legacy_kw = true,
   .name = "pair",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_quad = {
-  .id = T_QUAD,
+  FC_ID(T_QUAD),
   .ea_type = EAF_TYPE_ROUTER_ID,
   .legacy_kw = true,
   .name = "quad",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
+static const struct f_class f_type_enum_lo = {
+  FC_ID(T_ENUM_LO),
+  .hidden = true,
+  .name = "enum __lo",
+};
+
 static const struct f_class f_type_enum_rts = {
-  .id = T_ENUM_RTS,
+  FC_ID(T_ENUM_RTS),
   .name = "enum rts",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_bgp_origin = {
-  .id = T_ENUM_BGP_ORIGIN,
+  FC_ID(T_ENUM_BGP_ORIGIN),
   .name = "enum bgp_origin",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_scope = {
-  .id = T_ENUM_SCOPE,
+  FC_ID(T_ENUM_SCOPE),
   .name = "enum scope",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_rtd = {
-  .id = T_ENUM_RTD,
+  FC_ID(T_ENUM_RTD),
   .name = "enum rtd",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_roa = {
-  .id = T_ENUM_ROA,
+  FC_ID(T_ENUM_ROA),
   .name = "enum roa",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_aspa = {
-  .id = T_ENUM_ASPA,
+  FC_ID(T_ENUM_ASPA),
   .name = "enum aspa",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_net_type = {
-  .id = T_ENUM_NET_TYPE,
+  FC_ID(T_ENUM_NET_TYPE),
   .name = "enum net_type",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_ra_preference = {
-  .id = T_ENUM_RA_PREFERENCE,
+  FC_ID(T_ENUM_RA_PREFERENCE),
   .name = "enum ra_preference",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_af = {
-  .id = T_ENUM_AF,
+  FC_ID(T_ENUM_AF),
   .name = "enum af",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_mpls_policy = {
-  .id = T_ENUM_MPLS_POLICY,
+  FC_ID(T_ENUM_MPLS_POLICY),
   .name = "enum mpls_policy",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
 static const struct f_class f_type_enum_net_evpn_type = {
-  .id = T_ENUM_NET_EVPN_TYPE,
+  FC_ID(T_ENUM_NET_EVPN_TYPE),
   .name = "enum net_evpn_type",
   .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
 };
 
+static const struct f_class f_type_enum_kbr_source = {
+  FC_ID(T_ENUM_KBR_SOURCE),
+  .name = "enum kbr_source",
+  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+};
+
+static const struct f_class f_type_enum_empty = {
+  FC_ID(T_ENUM_EMPTY),
+  .hidden = true,
+  .name = "enum __empty",
+};
+
+static const struct f_class f_type_enum_hi = {
+  FC_ID(T_ENUM_HI),
+  .hidden = true,
+  .name = "enum __hi",
+};
+
 static const struct f_class f_type_ip = {
-  .id = T_IP,
+  FC_ID(T_IP),
   .ea_type = EAF_TYPE_IP_ADDRESS,
   .legacy_kw = true,
   .name = "ip",
@@ -165,7 +205,7 @@ static const struct f_class f_type_ip = {
 };
 
 static const struct f_class f_type_prefix = {
-  .id = T_NET,
+  FC_ID(T_NET),
   .legacy_kw = true,
   .name = "prefix",
   .compare = COMPARE(net_compare(v1->val.net, v2->val.net)),
@@ -179,7 +219,7 @@ f_string_compare(F_CLASS_COMPARE)
 }
 
 static const struct f_class f_type_string = {
-  .id = T_STRING,
+  FC_ID(T_STRING),
   .ea_type = EAF_TYPE_STRING,
   .legacy_kw = true,
   .name = "string",
@@ -188,7 +228,7 @@ static const struct f_class f_type_string = {
 };
 
 static const struct f_class f_type_bytestring = {
-  .id = T_BYTESTRING,
+  FC_ID(T_BYTESTRING),
   .ea_type = EAF_TYPE_OPAQUE,
   .legacy_kw = true,
   .name = "bytestring",
@@ -197,13 +237,19 @@ static const struct f_class f_type_bytestring = {
 };
 
 static const struct f_class f_type_bgpmask = {
-  .id = T_PATH_MASK,
+  FC_ID(T_PATH_MASK),
   .legacy_kw = true,
   .name = "bgpmask",
 };
 
+static const struct f_class f_type_bgpmask_item = {
+  FC_ID(T_PATH_MASK_ITEM),
+  .hidden = true,
+  .name = "bgpmask_item",
+};
+
 static const struct f_class f_type_bgppath = {
-  .id = T_PATH,
+  FC_ID(T_PATH),
   .ea_type = EAF_TYPE_AS_PATH,
   .legacy_kw = true,
   .name = "bgppath",
@@ -212,7 +258,7 @@ static const struct f_class f_type_bgppath = {
 };
 
 static const struct f_class f_type_clist = {
-  .id = T_CLIST,
+  FC_ID(T_CLIST),
   .ea_type = EAF_TYPE_INT_SET,
   .legacy_kw = true,
   .name = "clist",
@@ -220,14 +266,14 @@ static const struct f_class f_type_clist = {
 };
 
 static const struct f_class f_type_ec = {
-  .id = T_EC,
+  FC_ID(T_EC),
   .legacy_kw = true,
   .name = "ec",
   .compare = COMPARE(u64_cmp(v1->val.ec, v2->val.ec)),
 };
 
 static const struct f_class f_type_eclist = {
-  .id = T_ECLIST,
+  FC_ID(T_ECLIST),
   .ea_type = EAF_TYPE_EC_SET,
   .legacy_kw = true,
   .name = "eclist",
@@ -235,14 +281,14 @@ static const struct f_class f_type_eclist = {
 };
 
 static const struct f_class f_type_lc = {
-  .id = T_LC,
+  FC_ID(T_LC),
   .legacy_kw = true,
   .name = "lc",
   .compare = COMPARE(lcomm_cmp(v1->val.lc, v2->val.lc)),
 };
 
 static const struct f_class f_type_lclist = {
-  .id = T_LCLIST,
+  FC_ID(T_LCLIST),
   .ea_type = EAF_TYPE_LC_SET,
   .legacy_kw = true,
   .name = "lclist",
@@ -250,28 +296,28 @@ static const struct f_class f_type_lclist = {
 };
 
 static const struct f_class f_type_rd = {
-  .id = T_RD,
+  FC_ID(T_RD),
   .legacy_kw = true,
   .name = "rd",
   .compare = COMPARE(u64_cmp(v1->val.ec, v2->val.ec)),
 };
 
 static const struct f_class f_type_mac = {
-  .id = T_MAC,
+  FC_ID(T_MAC),
   .legacy_kw = true,
   .name = "mac",
   .compare = COMPARE(mac_compare(v1->val.mac, v2->val.mac)),
 };
 
 static const struct f_class f_type_route = {
-  .id = T_ROUTE,
+  FC_ID(T_ROUTE),
   .legacy_kw = true,
   .name = "route",
   .empty = { .type = T_ROUTE, },
 };
 
 static const struct f_class f_type_routes = {
-  .id = T_ROUTES_BLOCK,
+  FC_ID(T_ROUTES_BLOCK),
   .name = "routes",
 };
 
