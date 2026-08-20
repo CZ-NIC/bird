@@ -105,6 +105,21 @@ endef
 
 clean = $(eval $(call clean_in,$(1)))
 
+
+# Generic rule for m4-auto generated files
+$(objdir)/%-m4-auto.h: $(srcdir)/lib/macro.m4 $(srcdir)/%.c $(objdir)/.dir-stamp
+	$(M4) $(M4FLAGS) -DTARGET=AUTO -P $^ >$@
+
+$(objdir)/%-m4-auto.h: $(srcdir)/lib/macro.m4 $(objdir)/%.c
+	$(M4) $(M4FLAGS) -DTARGET=AUTO -P $^ >$@
+
+define m4_auto_in =
+$(o)$(1:.c=.o): $(o)$(1:.c=-m4-auto.h)
+endef
+
+m4_auto = $(eval $(foreach f, $(1), $(call m4_auto_in, $(f))))
+
+
 # Include main Makefiles of the directories
 include $(addsuffix /Makefile,$(addprefix $(srcdir)/,$(dirs)))
 
