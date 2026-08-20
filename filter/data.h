@@ -320,6 +320,7 @@ trie_match_next_longest_ip6(net_addr_ip6 *n, ip6_addr *found)
 
 #define F_CMP_ERROR 999
 
+const struct f_class *f_type_get_class(enum f_type t);
 const char *f_type_name(enum f_type t);
 const char *f_type_pretty_name(enum f_type t);
 enum f_type f_type_element_type(enum f_type t);
@@ -352,6 +353,7 @@ const struct adata *eclist_filter(struct linpool *pool, const struct adata *list
 const struct adata *lclist_filter(struct linpool *pool, const struct adata *list, const struct f_val *set, int pos);
 
 const struct adata *bytestring_append(struct linpool *pool, const struct adata *v1, const struct adata *v2);
+int bytestring_compare(const struct adata *v1, const struct adata *v2);
 
 
 /* Special undef value for paths and clists */
