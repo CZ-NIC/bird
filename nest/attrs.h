@@ -171,6 +171,9 @@ static inline u64 ec_get(const u32 *l, int i)
 static inline void ec_put(u32 *l, int i, u64 val)
 { l[i] = ec_hi(val); l[i+1] = ec_lo(val); }
 
+static inline u64 ec_any(uint type, u64 val)
+{ return ((u64) type << 48) | val; }
+
 /* RFC 4360 3.1.  Two-Octet AS Specific Extended Community */
 static inline u64 ec_as2(enum ec_subtype kind, u64 key, u64 val)
 { return (((u64) kind | 0x0000) << 48) | (key << 32) | val; }
