@@ -1870,6 +1870,7 @@ channel_notify_accepted(void *_channel)
 
   RT_EXPORT_WALK(&c->out_req, u)
   {
+        log("channel_notify_accepted c %p", c);
     switch (u->kind)
     {
       case RT_EXPORT_STOP:
@@ -2388,6 +2389,7 @@ rte_same(const rte *x, const rte *y)
 static int
 rte_better_(const rte ** best_rte_preselection, const rte *new, const rte *old)
 {
+        log("new %p valid %i old %p valid %i", new, rte_is_valid(new), old, rte_is_valid(old));
   if (!rte_is_valid(new))
     return 0;
   if (!rte_is_valid(old))
@@ -2465,7 +2467,7 @@ rte_best_selection(struct rtable_private *table, net *nn)
     if (!rte_is_valid(best_rte_preselection[0])) //todo: is this ok in multithreading? What if we find route and it then became invalid?
       return NULL;
     /* One preselected rte - it must be the best */
-    //log("we have best? e %p e type %i", best_rte_preselection[0], best_rte_preselection[0]->net->type);
+    log("we have best? e %p e type %i", best_rte_preselection[0], best_rte_preselection[0]->net->type);
     return best_rte_preselection[0];
   }
   /* more routes - bgp MED? */
@@ -2594,7 +2596,6 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
       new->lastmod = current_time();
       new->id = hmap_first_zero(&table->id_map);
       hmap_set(&table->id_map, new->id);
-      //log("id %i set to rte %p", new->id, new);
     }
 
   /* Finally drop the old route */
@@ -2604,20 +2605,10 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
     uint seen = 0;
     /* Mark also the old route as obsolete. It might be best, but we are not recalculating best routes here */
     old_stored->flags |= REF_OBSOLETE;
-    log("rte_recalculate(  %p %p", old_stored, old_stored->rte);
-    bool need_best = false;
+    //log("rte_recalculate(  %p %p", old_stored, old_stored->rte);
 
-    if (atomic_load(&net->best_rte) == old)
-    {
-      if (new)
-        atomic_store_explicit(&net->best_rte, new, memory_order_release);
-      else
-        need_best = true;
-    }
-    //log("NOT THREAD SAFE PART");
     NET_WALK_ROUTES(table, net, ep, e)
     {
-      //log("in susp walk r %p (e %p old_stored %p %i) next %p %N", &e->rte, e, old_stored, e == old_stored, e->next, e->rte.net);
       if (e == old_stored)
       {
 	ASSERT_DIE(e->rte.src == src);
@@ -2625,10 +2616,6 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
 	    atomic_load_explicit(&e->next, memory_order_relaxed),
 	    memory_order_release);
 	ASSERT_DIE(!seen++);
-      } else if (need_best)
-      {
-        atomic_store_explicit(&net->best_rte, &e->rte, memory_order_release);
-        need_best = false;
       }
     }
     ASSERT_DIE(seen == 1);
@@ -2643,8 +2630,6 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
     } while (!atomic_compare_exchange_strong_explicit(&net->routes,
        &next, new_stored, memory_order_relaxed, memory_order_relaxed));
   }
-  if (new_stored && new_stored->rte.id == 2001)
-    log("store rte %p into net %p", new_stored, net);
 
     /* Log the route change */
   if (new_ok)
@@ -2656,8 +2641,6 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
       log(L_TRACE "%s > ignored %N %s->%s", req->name, i->addr, old ? "filtered" : "none", new ? "filtered" : "none");
 
   /* Propagate the route change */
-  if(RTE_OR_NULL(new_stored) && RTE_OR_NULL(new_stored)->id == 2001)
-    log("rte_recalc announce new %p old %p ", RTE_OR_NULL(new_stored), RTE_OR_NULL(old_stored));
   rte_announce_all(table, i, net,
       RTE_OR_NULL(new_stored), RTE_OR_NULL(old_stored));
 }
@@ -2678,6 +2661,7 @@ rte_recalculate_best_for_net(struct rtable_private *table, net *nets, struct net
   net *nn = &nets[ni->index];
 
   const rte *old_best = NET_BEST_ROUTE(nn);
+  log("old best %p", old_best);
   const rte *best = rte_best_selection(table, nn);
 
 #if 0
@@ -2767,8 +2751,7 @@ rte_recalculate_best_locked(struct rtable_private *table)
 
     /* We know, that the route is from table, so we can get its index like this: */
     nets_to_recalc[nets_count] = NET_TO_INDEX(route->net);
-    if (route->id == 2001)
-      log("route %p %i arr idx %N hash %x uc %i ni %p it %p net %p net type %i jour it %p", route, route->id,route->net,
+    log("route %p %i arr idx %N hash %x uc %i ni %p it %p net %p net type %i jour it %p", route, route->id,route->net,
      NET_TO_INDEX(route->net)->hash, NET_TO_INDEX(route->net)->uc, NET_TO_INDEX(route->net), it, route->net, route->net->type, it);
   }
 
