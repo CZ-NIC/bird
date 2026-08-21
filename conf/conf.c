@@ -525,8 +525,6 @@ config_init(void)
 
   config_timer = tm_new(config_pool);
   config_timer->hook = config_timeout;
-
-  f_class_build();
 }
 
 /**

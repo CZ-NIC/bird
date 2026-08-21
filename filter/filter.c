@@ -381,7 +381,7 @@ f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
  * for allocations. Do not call in other cases.
  */
 struct f_val
-cf_eval(const struct f_inst *inst, int type)
+cf_eval(const struct f_inst *inst, enum f_type type)
 {
   struct f_val val;
 

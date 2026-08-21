@@ -28,47 +28,11 @@ struct f_method {
   enum f_type args_type[];
 };
 
-/* Filter value; size of this affects filter memory consumption */
-struct f_val {
-  enum f_type type;	/* T_*  */
-  union {
-    uint i;
-    u64 ec;
-    lcomm lc;
-    vpn_rd rd;
-    ip_addr ip;
-    mac_addr mac;
-    const net_addr *net;
-    const char *s;
-    const struct adata *bs;
-    const struct f_tree *t;
-    const struct f_trie *ti;
-    const struct adata *ad;
-    const struct f_path_mask *path_mask;
-    struct f_path_mask_item pmi;
-    struct rte *rte;
-  } val;
-};
-
-/* Detailed type/class definitions */
-struct f_class {
-  enum f_type id;		/* T_* for static types */
-  byte ea_type;			/* EAF_TYPE_* */
-  bool hidden;			/* Inaccessible for users from config */
-  bool legacy_kw;		/* Accessed from type_kw in parser */
-  const char *name;		/* String name */
-  const char *pretty_name;	/* More descriptive name */
-  struct f_val empty;		/* Default value of uninitialized variables */
-
-#define F_CLASS_COMPARE		const struct f_val *v1, const struct f_val *v2
-  int (*compare)(F_CLASS_COMPARE);	/* Compare function */
-};
-
 void f_class_register_static(const struct f_class *);
 void f_class_register_dynamic(const struct f_class *, int *id);
 void f_class_build(void);
 
-extern const struct f_class *f_base_types[0x7f];	/* TODO: Autocompute the limit */
+extern const struct f_class *f_base_types[T__MAX];	/* TODO: Autocompute the limit */
 
 /* Dynamic attribute definition (eattrs) */
 struct f_dynamic_attr {

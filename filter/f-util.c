@@ -171,7 +171,7 @@ f_for_cycle(struct symbol *var, struct f_inst *term, struct f_inst *block)
   if (!ms)
     cf_error("Type %s is not iterable, can't be used in FOR", f_type_name(term->type));
 
-  if (var->class != (SYM_VARIABLE | el_type))
+  if (var->class != (int) (SYM_VARIABLE | el_type))
     cf_error("Loop variable '%s' in FOR must be of type %s, got %s",
 	var->name, f_type_name(el_type), f_type_name(var->class & 0xff));
 

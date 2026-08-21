@@ -56,7 +56,7 @@ enum filter_return f_run_args(const struct filter *filter, struct rte **rte, str
 enum filter_return f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool, uint argc, const struct f_val *argv, struct f_val *pres);
 enum filter_return f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf);
 
-struct f_val cf_eval(const struct f_inst *inst, int type);
+struct f_val cf_eval(const struct f_inst *inst, enum f_type type);
 static inline uint cf_eval_int(const struct f_inst *inst) { return cf_eval(inst, T_INT).val.i; };
 
 const char *filter_name(const struct filter *filter);

@@ -107,6 +107,7 @@ clean = $(eval $(call clean_in,$(1)))
 
 define m4_auto_in =
 $(o)$(1:.c=.o): $(o)$(1:.c=-m4-auto-pre.c)
+$(o)$(1:.c=.o): $(o)$(1:.c=-m4-auto-post.c)
 prepare: $(o)$(1:.c=-m4-auto-in.h)
 endef
 
@@ -156,6 +157,7 @@ $(call m4_generic_rule_one,$(1),$(2),$(objdir)/%.c)
 endef
 
 $(eval $(call m4_generic_rule,pre.c,PREC))
+$(eval $(call m4_generic_rule,post.c,POSTC))
 $(eval $(call m4_generic_rule,in.h,INCH))
 
 # Finally include the computed dependencies:
