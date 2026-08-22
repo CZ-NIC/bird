@@ -20,6 +20,8 @@
 
 #define T_ENUM T_ENUM_LO ... T_ENUM_HI
 
+#define F_VAL(_type, ...)  ((struct f_val) { .type = _type, .val.v_##_type = __VA_ARGS__ })
+
 struct f_method {
   struct symbol *sym;
   struct f_inst *(*new_inst)(struct f_inst *obj, struct f_inst *args);

@@ -399,7 +399,7 @@ static const struct f_class FC_SN(f_type_lclist) = {
 };
 
 static const struct f_class FC_SN(f_type_rd) = {
-  FC_TYPE(u64),
+  FC_TYPE(vpn_rd),
   FC_ID(T_RD),
   .legacy_kw = true,
   .name = "rd",

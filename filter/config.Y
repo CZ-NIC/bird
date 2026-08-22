@@ -650,8 +650,8 @@ cmds_int: cmd_prep
  * than the token '/' (in net_ip4_).
  */
 fipa:
-   IP4 %prec PREFIX_DUMMY { $$.type = T_IP; $$.val.ip = ipa_from_ip4($1); }
- | IP6 %prec PREFIX_DUMMY { $$.type = T_IP; $$.val.ip = ipa_from_ip6($1); }
+   IP4 %prec PREFIX_DUMMY { $$ = F_VAL(T_IP, ipa_from_ip4($1)); }
+ | IP6 %prec PREFIX_DUMMY { $$ = F_VAL(T_IP, ipa_from_ip6($1)); }
  ;
 
 
@@ -664,10 +664,10 @@ fipa:
  */
 
 set_atom0:
-   NUM    { $$.type = T_INT; $$.val.i = $1; }
+   NUM    { $$ = F_VAL(T_INT, $1); }
  | fipa   { $$ = $1; }
- | VPN_RD { $$.type = T_RD; $$.val.rd = $1; }
- | MAC_   { $$.type = T_MAC; $$.val.mac = $1; }
+ | VPN_RD { $$ = F_VAL(T_RD, $1); }
+ | MAC_   { $$ = F_VAL(T_MAC, $1); }
  | ENUM_TOKEN { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  | '(' term ')' {
      $$ = cf_eval($2, T_VOID);
@@ -806,37 +806,37 @@ bgp_path:
  ;
 
 bgp_path_tail:
-   NUM bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .asn = $1, .kind = PM_ASN, }, }); $$->next = $2;  }
- | NUM DDOT NUM bgp_path_tail	{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .from = $1, .to = $3, .kind = PM_ASN_RANGE }, }); $$->next = $4; }
- | '[' ']' bgp_path_tail { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .set = NULL, .kind = PM_ASN_SET }, }); $$->next = $3; }
+   NUM bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, F_VAL(T_PATH_MASK_ITEM, { .asn = $1, .kind = PM_ASN, })); $$->next = $2;  }
+ | NUM DDOT NUM bgp_path_tail	{ $$ = f_new_inst(FI_CONSTANT, F_VAL(T_PATH_MASK_ITEM, { .from = $1, .to = $3, .kind = PM_ASN_RANGE })); $$->next = $4; }
+ | '[' ']' bgp_path_tail { $$ = f_new_inst(FI_CONSTANT, F_VAL(T_PATH_MASK_ITEM, { .set = NULL, .kind = PM_ASN_SET })); $$->next = $3; }
  | '[' set_items ']' bgp_path_tail {
    if ($2->from.type != T_INT) cf_error("Only integer sets allowed in path mask");
-   $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .set = build_tree($2, true), .kind = PM_ASN_SET }, }); $$->next = $4;
+   $$ = f_new_inst(FI_CONSTANT, F_VAL(T_PATH_MASK_ITEM, { .set = build_tree($2, true), .kind = PM_ASN_SET })); $$->next = $4;
  }
- | '*' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_ASTERISK }, }); $$->next = $2; }
- | '?' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_QUESTION }, }); $$->next = $2; }
- | '+' bgp_path_tail 		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_LOOP }, }); $$->next = $2; }
+ | '*' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, F_VAL(T_PATH_MASK_ITEM, { .kind = PM_ASTERISK })); $$->next = $2; }
+ | '?' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, F_VAL(T_PATH_MASK_ITEM, { .kind = PM_QUESTION })); $$->next = $2; }
+ | '+' bgp_path_tail 		{ $$ = f_new_inst(FI_CONSTANT, F_VAL(T_PATH_MASK_ITEM, { .kind = PM_LOOP })); $$->next = $2; }
  | bgp_path_expr bgp_path_tail	{ $$ = $1; $$->next = $2; }
  | 				{ $$ = NULL; }
  ;
 
 constant:
-   NUM      { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = $1, }); }
- | TRUE     { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 1, }); }
- | FALSE    { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 0, }); }
- | TEXT     { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_STRING, .val.s = $1, }); }
- | BYTETEXT { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BYTESTRING, .val.bs = $1, }); }
+   NUM      { $$ = f_new_inst(FI_CONSTANT, F_VAL(T_INT, $1,)); }
+ | TRUE     { $$ = f_new_inst(FI_CONSTANT, F_VAL(T_BOOL, 1,)); }
+ | FALSE    { $$ = f_new_inst(FI_CONSTANT, F_VAL(T_BOOL, 0,)); }
+ | TEXT     { $$ = f_new_inst(FI_CONSTANT, F_VAL(T_STRING, $1,)); }
+ | BYTETEXT { $$ = f_new_inst(FI_CONSTANT, F_VAL(T_BYTESTRING, $1,)); }
  | fipa     { $$ = f_new_inst(FI_CONSTANT, $1); }
- | VPN_RD   { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_RD, .val.rd = $1, }); }
- | MAC_     { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_MAC, .val.mac = $1, }); }
- | net_     { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_NET, .val.net = $1, }); }
- | '[' ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_SET, .val.t = NULL, }); }
+ | VPN_RD   { $$ = f_new_inst(FI_CONSTANT, F_VAL(T_RD, $1,)); }
+ | MAC_     { $$ = f_new_inst(FI_CONSTANT, F_VAL(T_MAC, $1,)); }
+ | net_     { $$ = f_new_inst(FI_CONSTANT, F_VAL(T_NET, $1,)); }
+ | '[' ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_SET, }); }
  | '[' set_items ']' {
      DBG( "We've got a set here..." );
      $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_SET, .val.t = build_tree($2, true), });
      DBG( "ook\n" );
  }
- | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PREFIX_SET, .val.ti = $2, }); }
+ | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PREFIX_SET, .val.ti = $2 }); }
  | ENUM_TOKEN { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = $1 >> 16, .val.i = $1 & 0xffff, }); }
  ;
 
