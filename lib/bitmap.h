@@ -31,14 +31,12 @@ static inline int bmap_test(struct bmap *b, uint n)
 
 static inline void bmap_set(struct bmap *b, uint n)
 {
-  log("map %p set %i", b, n);
   if (n >= bmap_max(b)) bmap_grow(b, n/8 + 1);
   BIT32_SET(b->data, n);
 }
 
 static inline void bmap_clear(struct bmap *b, uint n)
 {
-  log("map %p clear %i", b, n);
   if (n >= bmap_max(b)) return;
   BIT32_CLR(b->data, n);
 }

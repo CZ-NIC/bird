@@ -400,8 +400,8 @@ void rt_export_refeed_request(struct rt_export_request *rer, struct rt_feeding_r
   bmap_reset(&rer->feed_map, 4);
   rt_export_refeed_feeder(&rer->feeder, rfr);
   rt_export_change_state(rer, BIT32_ALL(TES_FEEDING, TES_PARTIAL, TES_READY), TES_PARTIAL);
-  if (rer->r.event){log("event rt_export_refeed_request");
-    ev_send(rer->r.target, rer->r.event);}
+  if (rer->r.event)
+    ev_send(rer->r.target, rer->r.event);
 }
 
 void
