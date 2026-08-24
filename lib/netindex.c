@@ -286,7 +286,6 @@ net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
 void net_lock_index(netindex_hash *h UNUSED, struct netindex *i)
 {
 //  log(L_TRACE "Lock index %p", i);
-  //ASSERT_DIE(!i->addr || i->addr->type<20);
   lfuc_lock(&i->uc);
 }
 

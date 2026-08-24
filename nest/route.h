@@ -66,7 +66,6 @@ struct rtable_config {
   uint gc_threshold;			/* Maximum number of operations before GC is run */
   uint gc_period;			/* Approximate time between two consecutive GC runs */
   u32 debug;				/* Debugging flags (D_*) */
-  u32 route_selection_batch; /* Maximum number of routes we can recalculate at once */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte trie_used;			/* Rtable has attached trie */
   struct rt_cork_threshold {
@@ -440,7 +439,7 @@ struct rtable_private {
   byte nhu_corked;			/* Next Hop Update is corked with this state */
   byte export_used;			/* Pending Export pruning is scheduled */
   byte cork_active;			/* Cork has been activated */
-  byte all_req_valid; //TODO
+  byte all_req_valid;
   struct rt_cork_threshold cork_threshold;	/* Threshold for table cork */
   u32 prune_index;			/* Rtable prune FIB iterator */
   u32 nhu_index;			/* Next Hop Update FIB iterator */
@@ -555,7 +554,7 @@ struct rt_net_pending_export {
 };
 
 typedef struct network {
-  const rte *_Atomic best_rte;                       /* The best route */
+  const rte *_Atomic best_rte;                  /* The best route */
   struct rte_storage * _Atomic routes;		/* Available routes for this network */
 
   /* Uncleaned pending exports */

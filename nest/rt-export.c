@@ -157,8 +157,8 @@ rt_export_get(struct rt_export_request *r)
         RCU_ANCHOR(u);
         feed = e->feed_net(e, u, ni->index, &r->seq_map, NULL, NULL, update);
       }
- 
-       ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
+
+      ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
 
       r->stats.updates_received += feed->count_routes;
       EXPORT_FOUND(RT_EXPORT_FEED);

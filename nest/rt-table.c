@@ -201,7 +201,6 @@ static inline rtable *rt_pub_to_pub(rtable *tab) { return tab; }
     log(L_TRACE "%s.%s: " fmt, c->proto->name, c->name, ##args);\
 } while (0)
 
-
 /*
  * Lockless table feeding helpers
  */
@@ -270,7 +269,7 @@ net_find_valid(struct rtable_reading *tr, netindex_hash *nh, const net_addr *add
   const rte * r_ = NET_BEST_ROUTE(n);
   struct rte_storage *s = r_? SKIP_BACK(struct rte_storage, rte, r_) : NULL;
 
-  if (!s || !rte_is_valid(&s->rte) || RTE_IS_OBSOLETE(s) ) //TODO IS IT OK?
+  if (!s || !rte_is_valid(&s->rte) || RTE_IS_OBSOLETE(s) )
     return NULL;
 
   return n;
@@ -749,6 +748,7 @@ net_roa_check(rtable *tp, const net_addr *n, u32 asn)
 } while (0)
 
   RT_READ(aux, tr);
+
   {
     const struct f_trie *trie = atomic_load_explicit(&tr->t->trie, memory_order_acquire);
     ASSERT_DIE(trie);
@@ -1190,7 +1190,6 @@ static uint
 rte_feed_count(net *n)
 {
   uint count = 0;
-
   NET_READ_WALK_ROUTES(n, ep, e)
     count++;
 
@@ -1298,7 +1297,7 @@ export_filter(struct channel *c, rte *rt, int silent)
   return true;
 }
 
-#define EXPORT_FLAG_BAD(c, e)  bug("flags %p",e);log(L_ERR "%s.%s: Export flag inconsistency at %s:%d, route id %u. If frequent, please tell the developers.", (c)->proto->name, (c)->name, __FILE__, __LINE__, (e)->id);
+#define EXPORT_FLAG_BAD(c, e)  log(L_ERR "%s.%s: Export flag inconsistency at %s:%d, route id %u. If frequent, please tell the developers.", (c)->proto->name, (c)->name, __FILE__, __LINE__, (e)->id);
 #define EXPORT_FLAG_EXPECT(c, e, kind, state)	do { \
   if (bmap_test(&(c)->export_##kind##_map, (e)->id) == (state)) break; \
   EXPORT_FLAG_BAD((c), (e)); \
@@ -1400,8 +1399,8 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old, const rte *tr
     if (nacc || nrej)
     {
       old = new;
-      if (nacc && nrej){ bug("flags nacc && nrej %p", new);
-	EXPORT_FLAG_BAD(c, new);}
+      if (nacc && nrej)
+	EXPORT_FLAG_BAD(c, new);
     }
   }
 
@@ -1472,7 +1471,6 @@ channel_notify_optimal_req(struct channel *c, struct rt_export_request *req)
 
       case RT_EXPORT_FEED:
 	{
-                
 	  /* There is either zero or one new route, and if one, it's first */
 	  uint oldpos = (u->feed->block[0].flags & REF_OBSOLETE) ? 0 : 1;
 	  rte *new = oldpos ? &u->feed->block[0] : NULL;
@@ -1481,6 +1479,7 @@ channel_notify_optimal_req(struct channel *c, struct rt_export_request *req)
 	   * is the first one unprocessed which contains a route possibly exported
 	   * before. All the others should never be seen. */
 	  rte *old = (oldpos < u->feed->count_routes) ? &u->feed->block[oldpos] : NULL;
+
 	  /* Check whether it was actually seen because the best route may also be flapping
 	   * up-down. Therefore the first unseen export may actually have no old route
 	   * and we would falsely accuse the next one to be seen. */
@@ -1878,7 +1877,7 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
 
   // struct proto *p = c->proto;
   struct nexthop_adata *nhs = NULL;
-  rte *best = &feed->block[feed->best_rte_idx]; /* actually the new best route, but block[0] will need to be rewritten to load best */
+  rte *best = &feed->block[feed->best_rte_idx]; /* Actually the new best route, but block[0] will need to be rewritten to load best */
 
   if (best == NULL)
   {
@@ -1966,10 +1965,10 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
 static void
 rt_notify_merged(struct channel *c, const struct rt_export_feed *f)
 {
-  const rte *old_best = NULL; /* we are looking for the last best we know we have sent to kernel. Used more like a flag than a real thing */
+  const rte *old_best = NULL; /* We are looking for the last best we know we have sent to kernel. Used more like a flag than a real thing. */
   /* Find old best route */
   for (uint i = 0; i < f->count_routes; i++)
-    if (bmap_test(&c->export_accepted_map, f->block[i].id)) /* one feed has routes from one net */
+    if (bmap_test(&c->export_accepted_map, f->block[i].id)) /* One feed has routes from one net. */
     {
       old_best = &f->block[i];
       break;
@@ -2063,7 +2062,6 @@ rte_announce_to(struct rt_exporter *e, struct rt_net_pending_export *npe, const 
     ASSERT_DIE(atomic_exchange_explicit(&last->next, pushed, memory_order_acq_rel) == NULL);
 
   atomic_store_explicit(&npe->last, pushed, memory_order_release);
-
   if (!atomic_load_explicit(&npe->first, memory_order_relaxed))
     atomic_store_explicit(&npe->first, pushed, memory_order_release);
 
@@ -2079,16 +2077,7 @@ rte_announce_all(struct rtable_private *tab, const struct netindex *i UNUSED, ne
   /* Try to push */
   struct rt_pending_export *all_rpe = rte_announce_to(&tab->export_all, &net->all, new, old);
   if (all_rpe)
-  {
-  //  if (new && new->id == 2001)
-  //    log("announce %p new %p %N idx %i hash %u uc %i ni %p i %p (tab %p)", 
-  //      net,new, new->net,NET_TO_INDEX(new->net)->index, NET_TO_INDEX(new->net)->hash, NET_TO_INDEX(new->net)->uc, NET_TO_INDEX(new->net), &all_rpe->it, tab);
-  //  else if (old && old->id == 2001)
-  //    log("announce %p old %p %N idx %i hash %u uc %i ni %p i %p, (tab %p)",
-  //      net, old, old->net, NET_TO_INDEX(old->net)->index,  NET_TO_INDEX(old->net)->hash, NET_TO_INDEX(old->net)->uc, NET_TO_INDEX(old->net), &all_rpe->it, tab);
-
     rt_check_cork_high(tab);
-  }
   else
   {
     /* Not announced anything, cleanup now */
@@ -2114,14 +2103,6 @@ rte_announce_best(struct rtable_private *tab, const struct netindex *i UNUSED, n
 
   /* Try to push */
   struct rt_pending_export *best_rpe = NULL;
-
-     /* if (new_best && new_best->id == 2001)
-      log("announce best %p new %p %N idx %i hash %u uc %i ni %p  (tab %p)", 
-        net,new_best, new_best->net,NET_TO_INDEX(new_best->net)->index, NET_TO_INDEX(new_best->net)->hash, NET_TO_INDEX(new_best->net)->uc, NET_TO_INDEX(new_best->net), tab);
-    else if (old_best && old_best->id == 2001)
-      log("announce best %p old %p %N idx %i hash %u uc %i ni %p (tab %p)",
-        net, old_best, old_best->net, NET_TO_INDEX(old_best->net)->index,  NET_TO_INDEX(old_best->net)->hash, NET_TO_INDEX(old_best->net)->uc, NET_TO_INDEX(old_best->net), tab);
-*/
 
   /* The last net needs to be announced anyway so we could release export_all. */
   if (new_best != old_best)
@@ -2365,15 +2346,16 @@ rte_better_(const rte ** best_rte_preselection, const rte *new, const rte *old)
     return 1;
   if (np < op)
     return 0;
+
   if (old->src->owner->class != new->src->owner->class)
-    {
+  {
       /*
        *  If the user has configured protocol preferences, so that two different protocols
        *  have the same preference, try to break the tie by comparing addresses. Not too
        *  useful, but keeps the ordering of routes unambiguous.
        */
       return old->src->owner->class > new->src->owner->class;
-    }
+  }
   if (best_rte_preselection[0]->src->owner->class->rte_best)
     return 2; /* decision is on protocol*/
   return 0;
@@ -2423,12 +2405,12 @@ rte_best_selection(struct rtable_private *table, net *nn)
       ;
      }
   }
+
   if (ptr == 0)
   {
-    if (!rte_is_valid(best_rte_preselection[0])) //todo: is this ok in multithreading? What if we find route and it then became invalid?
+    if (!rte_is_valid(best_rte_preselection[0]))
       return NULL;
     /* One preselected rte - it must be the best */
-    //log("we have best? e %p e type %i", best_rte_preselection[0], best_rte_preselection[0]->net->type);
     return best_rte_preselection[0];
   }
   /* more routes - bgp MED? */
@@ -2555,7 +2537,6 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
     }
 
   /* Finally drop the old route */
-  /// TODO TODO TODO - THIS IS NOT THREAD SAFE
   if (old_stored)
   {
     uint seen = 0;
@@ -2586,7 +2567,7 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
        &next, new_stored, memory_order_relaxed, memory_order_relaxed));
   }
 
-    /* Log the route change */
+  /* Log the route change */
   if (new_ok)
     rt_rte_trace_in(D_ROUTES, req, new, "added");
   else if (old_ok)
@@ -2624,7 +2605,7 @@ rte_recalculate_best_for_net(struct rtable_private *table, net *nets, const stru
     /* We need to add a spinlock sentinel to the beginning */
     _Thread_local static struct rte_storage local_sentinel = { .flags = REF_OBSOLETE, };
 
-    // TODO: this will be needed to be locked differently. Or at least I hope so. 
+    // TODO: this will be needed to be locked differently. Or at least I hope so.
     //atomic_store_explicit(&local_sentinel.next, old_best_stored, memory_order_release);
     //atomic_store_explicit(&net->routes, &local_sentinel, memory_order_release);
 
@@ -2653,30 +2634,11 @@ rte_recalculate_best_for_net(struct rtable_private *table, net *nets, const stru
   {
 #endif
 
-  /* Log the route change */
-  //log("found best %p ni %p ni addr %p %i", best,  ni, ni->addr, ni->addr->type);
-  //ASSERT_DIE(!best || best->net->type == table->addr_type);
-  /*if (best)
-    if (old_best)
-      //log(L_TRACE "new best %p %N %p %s %i old best %N %s nn %p ni %p",best, best->net, best->net, best->src->owner->name, best->net->type,
-        //old_best->net, old_best->src->owner->name, nn, ni);
-        log(L_TRACE "new best %p %N %s old best %p %N", best, best->net, best->src->owner->name, old_best, old_best->net);
-    else
-      //log(L_TRACE "new best %N %n no old best %s nn %p ni %p %i", best->net, best->net, best->src->owner->name, nn, ni, best->net->type);
-      log(L_TRACE "new best %p %N %s", best, best->net, best->src->owner->name);
-  //else
-    //log("net %n has no new best ni %p %N", nn, ni, ni->addr);*/
-
-  //log("store best rte %p, to nn %p index %i", best, nn, ni);
   ASSERT_DIE(!best || best->net->type == table->addr_type);
-  
+
   atomic_store_explicit(&nn->best_rte, best, memory_order_release);
 
-  //ASSERT_DIE(!best || best->net->type == table->addr_type);
-if(!best && nn->routes)
-    bug("store zero best rte !");
   /* Propagate the route change */
-  
   return rte_announce_best(table, ni, nn,
       best, old_best);
 }
@@ -2697,8 +2659,6 @@ rte_recalculate_best_locked(struct rtable_private *table)
   /* Check all pending best route selection requests */
   for (struct lfjour_item *it; it = lfjour_get(&table->all_req); )
   {
-    //log(L_INFO "%s: Recalculate best checking seq %lu", table->name, it->seq);
-
     /* Already seen */
     if (bmap_test(&seq_map, it->seq))
       continue;
@@ -2717,11 +2677,9 @@ rte_recalculate_best_locked(struct rtable_private *table)
 
     const net_addr *na = r->net;
     const struct netindex *ni = NET_TO_INDEX(na);
-   
+
     /* Actually recalculate best route for this net */
-    //log(L_INFO "%s: Going for best in %lu", table->name, it->seq);
     struct rt_pending_export *brpe = rte_recalculate_best_for_net(table, nets, ni);
-    //log(L_INFO "%s: Recalculated best for %lu: %p", table->name, it->seq, brpe);
 
     if (brpe)
       table->last_best_rpe = brpe;
@@ -2892,7 +2850,6 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
     struct netindex *i;
     net *routes = atomic_load_explicit(&tab->routes, memory_order_acquire);
     net *nn;
-
     if (new)
     {
       /* An update */
@@ -2967,7 +2924,6 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
 
 static net *
 rt_net_feed_get_net(struct rtable_reading *tr, uint index)
-
 {
   /* Get the route block from the table */
   net *routes = atomic_load_explicit(&tr->t->routes, memory_order_acquire);
@@ -3121,7 +3077,6 @@ rt_net_best_reading(struct rtable_reading *tr, const net_addr *a)
   rte rt = {};
   rtable *t = tr->t;
 
-
   struct netindex *i = net_find_index(t->netindex, a);
   net *n = i ? net_find(tr, i) : NULL;
   if (!n)
@@ -3152,7 +3107,6 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struc
   RT_READ_ANCHORED(t, tr, u);
 
   net *n = rt_net_feed_get_net(tr, index);
-
   if (!n)
     return &rt_feed_index_out_of_range;
     /* No more to feed, we are fed up! */
@@ -3231,7 +3185,7 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struc
   if (
       (first_in_net != atomic_load_explicit(&n->best.first, memory_order_acquire))
       || (last_in_net != atomic_load_explicit(&n->best.last, memory_order_acquire)))
-   RT_READ_RETRY(tr);
+        RT_READ_RETRY(tr);
 
   /* And we're finally done */
   return feed;
@@ -4035,7 +3989,6 @@ What is this about:
 7) all export_all recipients have released export_all
 */
 
-
   t->all_req = (struct lfjour_recipient) {
     .event = ev_new_init(p, rte_recalculate_best, t),
     .target = &global_event_list,
@@ -4438,7 +4391,6 @@ rt_postconfig(struct config *c)
 	  digest_settle,
 	  export_settle,
 	  export_rr_settle,
-    route_selection_batch,
 	  cork_threshold,
 	  gc_threshold,
 	  gc_period,
@@ -4819,26 +4771,15 @@ rt_flowspec_resolve_rte(rte *r, struct channel *c)
 #endif
 }
 
-/*//  struct rte_storage *this;
-  //  if (updates[i].new.attrs)
-  //  {
-  //    rte *new = &updates[i].new;
-  //    new->lastmod = current_time();
-  //    new->id = hmap_first_zero(&tab->id_map);
-  //    hmap_set(&tab->id_map, new->id);
-  //    this = updates[i].new_stored = rte_store(new, ni, tab);
-   // }*/
-
 static struct rte_storage *
 rt_next_hop_update_rte_store(struct rtable_private *tab, net *n, struct netindex *ni,
         struct rte_storage *prev, struct rte_storage *old, rte *new)
 {
-  //TODO: make it thread safe
   new->lastmod = current_time();
   new->id = hmap_first_zero(&tab->id_map);
   hmap_set(&tab->id_map, new->id);
   struct rte_storage *new_stored = rte_store(new, ni, tab);
-  atomic_store_explicit(&new_stored->next, 
+  atomic_store_explicit(&new_stored->next,
         atomic_load_explicit(&old->next, memory_order_relaxed),
 	memory_order_release);
 
@@ -4857,7 +4798,6 @@ rt_next_hop_update_rte_store(struct rtable_private *tab, net *n, struct netindex
 static inline void
 rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
 {
-  //uint count = 0;
   int is_flow = net_val_match(tab->addr_type, NB_FLOW);
 
   const rte *old_best = NET_BEST_ROUTE(n);
@@ -5038,7 +4978,6 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->gc_period = (uint) -1;	/* set in rt_postconfig() */
   c->cork_threshold.low = 32768;
   c->cork_threshold.high = 98304;
-  c->route_selection_batch = 2000;
   c->export_settle = (struct settle_config) {
     .min = 1 MS,
     .max = 100 MS,
@@ -5152,7 +5091,7 @@ rt_shutdown(void *tab_)
     settle_cancel(&tab->export_digest->settle);
   }
 
-  ev_postpone(tab->all_req.event); //TODO is this enough? - no
+  ev_postpone(tab->all_req.event); //TODO is this enough?
   tab->all_req_valid = 0;
   lfjour_unregister(&tab->all_req);
 
@@ -5223,7 +5162,6 @@ rt_check_cork_high(struct rtable_private *tab)
     rt_cork_acquire();
     lfjour_schedule_cleanup(&tab->export_best.journal);
     lfjour_schedule_cleanup(&tab->export_all.journal);
-//    rt_export_used(&tab->exporter, tab->name, "corked");
 
     rt_trace(tab, D_STATES, "Corked");
   }
@@ -5858,7 +5796,6 @@ krt_export_net(struct channel *c, const net_addr *a, linpool *lp)
   }
 
   static _Thread_local rte best;
-
   best = rt_net_best(c->table, a);
 
   if (!best.attrs)
