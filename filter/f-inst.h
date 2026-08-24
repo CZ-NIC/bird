@@ -119,18 +119,11 @@ static inline struct f_static_attr f_new_static_attr(struct symbol *sym, int f_t
 { return (struct f_static_attr) { .f_type = f_type, .sa_code = code, .readonly = readonly, .sym = sym, }; }
 
 static inline int f_type_attr(int f_type) {
-  switch (f_type) {
-    case T_INT:		return EAF_TYPE_INT;
-    case T_IP:		return EAF_TYPE_IP_ADDRESS;
-    case T_QUAD:	return EAF_TYPE_ROUTER_ID;
-    case T_PATH:	return EAF_TYPE_AS_PATH;
-    case T_CLIST:	return EAF_TYPE_INT_SET;
-    case T_ECLIST:	return EAF_TYPE_EC_SET;
-    case T_LCLIST:	return EAF_TYPE_LC_SET;
-    case T_BYTESTRING:	return EAF_TYPE_OPAQUE;
-    default:
-      cf_error("Custom route attribute of unsupported type");
-  }
+  const struct f_class *cls = f_type_get_class(f_type);
+  if (cls && cls->ea_type)
+    return cls->ea_type;
+
+  cf_error("Custom route attribute of unsupported type");
 }
 
 /* Hook for call bt_assert() function in configuration */
