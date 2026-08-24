@@ -492,10 +492,6 @@ rt_exporter_push(struct rt_exporter *e, const struct rt_export_item *uit)
       lit->seq, (uit->new ?: uit->old)->net,
       uit->old, uit->old ? uit->old->id : 0,
       uit->new, uit->new ? uit->new->id : 0);
-  log( "Announcing change %lu at %N: %p (%u) -> %p (%u)",
-      lit->seq, (uit->new ?: uit->old)->net,
-      uit->old, uit->old ? uit->old->id : 0,
-      uit->new, uit->new ? uit->new->id : 0);
 
   lfjour_push_commit(&e->journal);
 

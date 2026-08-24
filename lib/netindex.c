@@ -135,7 +135,6 @@ netindex_hash_cleanup(callback *cb)
     if (!ni)
       continue;
 
-    log("netindex_hash_cleanup ni %p type %i", ni, ni->addr ? ni->addr->type: -1);
     /* We may use the acquired netindex pointer as we are
      * the only process which deletes them */
     ASSERT_DIE(i == ni->index);
