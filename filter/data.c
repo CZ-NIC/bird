@@ -183,49 +183,6 @@ bs_same(const struct adata *bs1, const struct adata *bs2)
   return (bs1->length == bs2->length) && !memcmp(bs1->data, bs2->data, bs1->length);
 }
 
-static inline int
-pmi_same(const struct f_path_mask_item *mi1, const struct f_path_mask_item *mi2)
-{
-  if (mi1->kind != mi2->kind)
-    return 0;
-
-  switch (mi1->kind) {
-    case PM_ASN:
-      if (mi1->asn != mi2->asn)
-	return 0;
-      break;
-    case PM_ASN_EXPR:
-      if (!f_same(mi1->expr, mi2->expr))
-	return 0;
-      break;
-    case PM_ASN_RANGE:
-      if (mi1->from != mi2->from)
-	return 0;
-      if (mi1->to != mi2->to)
-	return 0;
-      break;
-    case PM_ASN_SET:
-      if (!same_tree(mi1->set, mi2->set))
-	return 0;
-      break;
-  }
-
-  return 1;
-}
-
-static int
-pm_same(const struct f_path_mask *m1, const struct f_path_mask *m2)
-{
-  if (m1->len != m2->len)
-    return 0;
-
-  for (uint i=0; i<m1->len; i++)
-    if (!pmi_same(&(m1->item[i]), &(m2->item[i])))
-      return 0;
-
-  return 1;
-}
-
 /**
  * val_same - compare two values
  * @v1: first value
@@ -234,41 +191,27 @@ pm_same(const struct f_path_mask *m1, const struct f_path_mask *m2)
  * Compares two values and returns 1 if they are same and 0 if not.
  * Comparison of values of different types is valid and returns 0.
  */
-int
+bool
 val_same(const struct f_val *v1, const struct f_val *v2)
 {
-  int rc;
-
-  rc = val_compare(v1, v2);
+  int rc = val_compare(v1, v2);
   if (rc != F_CMP_ERROR)
     return !rc;
 
   if (v1->type != v2->type)
-    return 0;
+    return false;
 
-  switch (v1->type) {
-  case T_BYTESTRING:
-    return bs_same(v1->val.bs, v2->val.bs);
-  case T_PATH_MASK:
-    return pm_same(v1->val.path_mask, v2->val.path_mask);
-  case T_PATH_MASK_ITEM:
-    return pmi_same(&(v1->val.pmi), &(v2->val.pmi));
-  case T_PATH:
-  case T_CLIST:
-  case T_ECLIST:
-  case T_LCLIST:
-    return adata_same(v1->val.ad, v2->val.ad);
-  case T_SET:
+  const struct f_class *cls = f_type_get_class(v1->type);
+  if (cls && cls->same)
+    return cls->same(v1, v2);
+
+  if (v1->type == T_SET)
     return same_tree(v1->val.t, v2->val.t);
-  case T_PREFIX_SET:
+
+  if (v1->type == T_PREFIX_SET)
     return trie_same(v1->val.ti, v2->val.ti);
-  case T_ROUTE:
-    return v1->val.rte == v2->val.rte;
-  case T_ROUTES_BLOCK:
-    return v1->val.ad == v2->val.ad;
-  default:
-    bug("Invalid type in val_same(): %x", v1->type);
-  }
+
+  bug("Can't compute sameness of values of type %u (%s)", v1->type, cls ? cls->name ?: "no name" : "no class");
 }
 
 int

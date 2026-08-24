@@ -31,6 +31,7 @@
 #include "filter/class-m4-auto-pre.c"
 
 SUBLAMBDA(COMPARE, int, F_CLASS_COMPARE);
+SUBLAMBDA(SAME, bool, F_CLASS_COMPARE);
 
 #ifdef M4_AUTO
 /*
@@ -95,22 +96,24 @@ H_CLASS();
 #define F_CLASS_COMPARE			const struct f_val *v1, const struct f_val *v2
 
 struct f_class {
-  enum f_type id;			/* T_* for static types */ \
-  byte ea_type;				/* EAF_TYPE_* */ \
-  bool hidden;				/* Inaccessible for users from config */ \
-  bool legacy_kw;			/* Accessed from type_kw in parser */ \
-  int size;				/* Output of sizeof, aligned to sizeof(int) */ \
-  const char *name;			/* String name */ \
-  const char *pretty_name;		/* More descriptive name */ \
-  struct f_val empty;			/* Default value of uninitialized variables */ \
-  int (*compare)(F_CLASS_COMPARE);	/* Return 1 if v1 > v2, -1 if v1 < v2, 0 otherwise */ \
+  enum f_type id;			/* T_* for static types */
+  byte ea_type;				/* EAF_TYPE_* */
+  bool hidden;				/* Inaccessible for users from config */
+  bool legacy_kw;			/* Accessed from type_kw in parser */
+  int size;				/* Output of sizeof, aligned to sizeof(int) */
+  const char *name;			/* String name */
+  const char *pretty_name;		/* More descriptive name */
+  struct f_val empty;			/* Default value of uninitialized variables */
+  int (*compare)(F_CLASS_COMPARE);	/* Return 1 if v1 > v2, -1 if v1 < v2, 0 otherwise */
+  bool (*same)(F_CLASS_COMPARE);	/* Return true if v1 == v2, false otherwise
+					   All classes must have either &compare or &same. */
 };
 
 AUX_MUTE();
 
 /* Collect class information at the beginning */
-m4_define(FC_SN,[[m4_define([[THIS_CLASS_NAME]],$1)]])
-m4_define(FC_TYPE,[[m4_define([[THIS_CLASS_TYPE]],$1)]])
+m4_define(FC_SN,[[m4_define([[THIS_CLASS_NAME]],$1)]]);
+m4_define(FC_TYPE,[[m4_define([[THIS_CLASS_TYPE]],$1)]]);
 
 /* Get Type By ID array */
 AUX_SECTION(POSTC, C_BASE_TYPES,[[
@@ -119,12 +122,31 @@ const struct f_class *f_base_types[T__MAX] = {
 };
 ]]);
 
+/* Consistency check in tests */
+AUX_SECTION(TESTC, C_CONSISTENCY,[[
+int t_types_consistency(void)
+{
+]],[[
+  return 1;
+}
+]]);
+
 /* Actually use the ID */
 m4_define(FC_ID,[[
 H_ENUM()  $1,
 H_VAL_UNION()    THIS_CLASS_TYPE() v_$1;
 C_BASE_TYPES  [$1] = &THIS_CLASS_NAME,
-AUX_MUTE()]]);
+
+C_CONSISTENCY()
+  bt_assert_msg(f_base_types[$1]->name, "Type $1 (THIS_CLASS_NAME) has no defined name");
+  bt_assert_msg((
+      f_base_types[$1]->hidden ||
+      f_base_types[$1]->compare ||
+      f_base_types[$1]->same
+      ), "Type $1 (THIS_CLASS_NAME / %s) is not hidden and has neither compare(), nor same()", f_base_types[$1]->name);
+
+AUX_MUTE()
+]]);
 
 #else
 #define FC_SN(x)	x
@@ -132,11 +154,15 @@ AUX_MUTE()]]);
 #define FC_TYPE(x)	.size = sizeof(x)
 #endif
 
+static bool
+void_same(const struct f_val *v1 UNUSED, const struct f_val *v2 UNUSED)
+{ return true; }
 
 static const struct f_class FC_SN(f_type_void) = {
   FC_TYPE(int),
   FC_ID(T_VOID),
   .name = "void",
+  .same = &void_same,
 };
 
 static const struct f_class FC_SN(f_type_none) = {
@@ -277,6 +303,7 @@ static const struct f_class FC_SN(f_type_enum_empty) = {
   FC_ID(T_ENUM_EMPTY),
   .hidden = true,
   .name = "enum __empty",
+  .same = &void_same,
 };
 
 static const struct f_class FC_SN(f_type_enum_hi) = {
@@ -336,6 +363,7 @@ static const struct f_class FC_SN(f_type_bgpmask) = {
   FC_ID(T_PATH_MASK),
   .legacy_kw = true,
   .name = "bgpmask",
+  .same = SAME(pm_same(v1->val.path_mask, v2->val.path_mask)),
 };
 
 static const struct f_class FC_SN(f_type_bgpmask_item) = {
@@ -343,6 +371,7 @@ static const struct f_class FC_SN(f_type_bgpmask_item) = {
   FC_ID(T_PATH_MASK_ITEM),
   .hidden = true,
   .name = "bgpmask_item",
+  .same = SAME(pmi_same(&(v1->val.pmi), &(v2->val.pmi))),
 };
 
 static const struct f_class FC_SN(f_type_bgppath) = {
@@ -362,6 +391,7 @@ static const struct f_class FC_SN(f_type_clist) = {
   .legacy_kw = true,
   .name = "clist",
   .empty = { .type = T_CLIST, .val.ad = &null_adata },
+  .same = SAME(adata_same(v1->val.ad, v2->val.ad)),
 };
 
 static const struct f_class FC_SN(f_type_ec) = {
@@ -379,6 +409,7 @@ static const struct f_class FC_SN(f_type_eclist) = {
   .legacy_kw = true,
   .name = "eclist",
   .empty = { .type = T_ECLIST, .val.ad = &null_adata },
+  .same = SAME(adata_same(v1->val.ad, v2->val.ad)),
 };
 
 static const struct f_class FC_SN(f_type_lc) = {
@@ -396,6 +427,7 @@ static const struct f_class FC_SN(f_type_lclist) = {
   .legacy_kw = true,
   .name = "lclist",
   .empty = { .type = T_LCLIST, .val.ad = &null_adata },
+  .same = SAME(adata_same(v1->val.ad, v2->val.ad)),
 };
 
 static const struct f_class FC_SN(f_type_rd) = {
@@ -420,12 +452,14 @@ static const struct f_class FC_SN(f_type_route) = {
   .legacy_kw = true,
   .name = "route",
   .empty = { .type = T_ROUTE, },
+  .same = SAME(v1->val.rte == v2->val.rte),
 };
 
 static const struct f_class FC_SN(f_type_routes) = {
   FC_TYPE(struct rte *),
   FC_ID(T_ROUTES_BLOCK),
   .name = "routes",
+  .same = SAME(v1->val.rte == v2->val.rte),
 };
 
 #include "filter/class-m4-auto-post.c"

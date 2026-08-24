@@ -158,6 +158,7 @@ endef
 
 $(eval $(call m4_generic_rule,pre.c,PREC))
 $(eval $(call m4_generic_rule,post.c,POSTC))
+$(eval $(call m4_generic_rule,test.c,TESTC))
 $(eval $(call m4_generic_rule,in.h,INCH))
 
 # Finally include the computed dependencies:

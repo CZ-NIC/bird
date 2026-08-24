@@ -240,7 +240,7 @@ const char *f_type_pretty_name(enum f_type t);
 enum f_type f_type_element_type(enum f_type t);
 struct sym_scope *f_type_method_scope(enum f_type t);
 
-int val_same(const struct f_val *v1, const struct f_val *v2);
+bool val_same(const struct f_val *v1, const struct f_val *v2);
 int val_compare(const struct f_val *v1, const struct f_val *v2);
 void val_format(const struct f_val *v, buffer *buf);
 char *val_format_str(struct linpool *lp, const struct f_val *v);

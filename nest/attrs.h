@@ -85,8 +85,10 @@ struct f_path_mask {
   struct f_path_mask_item item[0];
 };
 
-int as_path_match(const struct adata *path, const struct f_path_mask *mask);
+int pm_same(const struct f_path_mask *m1, const struct f_path_mask *m2);
+int pmi_same(const struct f_path_mask_item *mi1, const struct f_path_mask_item *mi2);
 
+int as_path_match(const struct adata *path, const struct f_path_mask *mask);
 
 /* Counterparts to appropriate as_path_* functions */
 

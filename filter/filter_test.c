@@ -66,11 +66,15 @@ bt_assert_filter(int result, const struct f_line_item *assert)
       assert->lineno, assert->i_FI_ASSERT.s);
 }
 
+#include "filter/class-m4-auto-test.c"
+
 int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
   bt_bird_init();
+
+  bt_test_suite(t_types_consistency, "Testing type system consistency");
 
   bt_assert_hook = bt_assert_filter;
 
