@@ -2373,7 +2373,7 @@ rte_best_selection(struct rtable_private *table, net *nn)
   u32 best_rte_sel_size = 32;
   const rte ** best_rte_preselection = tmp_alloc(sizeof(rte *)*32);
 
-  u32 ptr = 0;
+  uint ptr = 0;
   const rte *old = NULL;
   const rte **new_field;
   best_rte_preselection[0] = NULL;
@@ -2581,15 +2581,6 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
       RTE_OR_NULL(new_stored), RTE_OR_NULL(old_stored));
 }
 
-static void
-rte_recalculate_best(void *t_)
-{
-  rtable *t = (rtable *)t_;
-
-  RT_LOCKED(t, table)
-    rte_recalculate_best_locked(table);
-}
-
 static struct rt_pending_export *
 rte_recalculate_best_for_net(struct rtable_private *table, net *nets, const struct netindex *ni)
 {
@@ -2644,8 +2635,10 @@ rte_recalculate_best_for_net(struct rtable_private *table, net *nets, const stru
 }
 
 static void
-rte_recalculate_best_locked(struct rtable_private *table)
+rte_recalculate_best(void *t_)
 {
+  RT_LOCK((rtable *) t_, table);
+
   if (!table->all_req_valid)
     return;
 
