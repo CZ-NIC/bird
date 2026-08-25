@@ -96,7 +96,7 @@ yang_model_cli_rpc_call_show_memory(struct yang_session *se)
   payload.hdr.type = 0;
 
   struct coap_tx_option *content_format = COAP_TX_OPTION_INT(
-	COAP_OPT_CONTENT_FORMAT, (u8) 140);
+	COAP_OPT_CONTENT_FORMAT, (u8) COAP_CF_YANG_CBOR);
 
   coap_tx_send(&se->coap, COAP_TX_RESPONSE(&se->coap, COAP_RESP_CONTENT,
 	content_format, &payload.hdr));

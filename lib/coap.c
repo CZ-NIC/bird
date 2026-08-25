@@ -331,6 +331,7 @@ coap_process_req_empty(struct coap_session *s)
 {
   struct coap_parse_context *ctx = &s->parser;
   ASSERT_DIE(ctx->code == COAP_REQ_EMPTY);
+  return false;
 }
 
 /* Capabilities and Settings Message Error */
@@ -428,19 +429,30 @@ coap_process_sco_csm(struct coap_session *s)
 
 static bool
 coap_process_sco_ping(struct coap_session *s)
+{
+  coap_tx_send(s, COAP_TX_RESPONSE(s, COAP_SCO_PONG));
+  return false;
+}
+
+static bool
+coap_process_sco_pong(struct coap_session *s UNUSED)
 { return false; }
 
 static bool
-coap_process_sco_pong(struct coap_session *s)
-{ return false; }
-
-static bool
-coap_process_sco_release(struct coap_session *s)
-{ return false; }
+coap_process_sco_release(struct coap_session *s UNUSED)
+{
+  log(L_INFO "CoAP received Release message, closing connection");
+  //s->flush_and_close = true;
+  return true;
+}
 
 static bool
 coap_process_sco_abort(struct coap_session *s)
-{ return false; }
+{
+   log(L_INFO "CoAP received Abort message, closing connection");
+   s->flush_and_close = true;
+   return true;
+}
 
 /**
  * coap_process - dispatch default CoAP processes
@@ -977,7 +989,7 @@ coap_parse_strerror(const struct coap_parsed_message *ctx)
 	  ctx->version,
 	  ctx->type, /* TODO: stringify */
 	  ctx->token_len);
-	  
+
     default:
       return tmp_sprintf("Unknown %s: %u",
 	  (ctx->state <= COAP_PMS_ERROR) ? "state" : "error", ctx->state);

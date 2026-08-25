@@ -51,6 +51,10 @@ enum coap_msg_code {
   COAP_REQ_PUT				= COAP_CLS_REQUEST | 3,		/* RFC 7252 */
   COAP_REQ_DELETE			= COAP_CLS_REQUEST | 4,		/* RFC 7252 */
 
+  COAP_REQ_FETCH			= COAP_CLS_REQUEST | 5,		/* RFC 8132 */
+  COAP_REQ_PATCH			= COAP_CLS_REQUEST | 6,		/* RFC 8132 */
+  COAP_REQ_IPATCH			= COAP_CLS_REQUEST | 7,		/* RFC 8132 method iPATCH */
+
   COAP_RESP_CREATED			= COAP_CLS_RESPONSE | 1,	/* RFC 7252 */
   COAP_RESP_DELETED			= COAP_CLS_RESPONSE | 2,	/* RFC 7252 */
   COAP_RESP_VALID			= COAP_CLS_RESPONSE | 3,	/* RFC 7252 */
@@ -117,6 +121,22 @@ enum coap_option_id {
   COAP_OPT_HOLDOFF		= 4,	/* RFC 8323, COAP_SCO_RELEASE */
   COAP_OPT_BAD_CSM		= 2,	/* RFC 8323, COAP_SCO_ABORT */
 } PACKED;
+
+/* CoAP values for Content-Format option, see IANA CoRE Parameters registry */
+enum coap_content_format {
+  COAP_CF_LINK_FORMAT           =    40, /* RFC 6690, application/link-format */
+  COAP_CF_YANG_CBOR             =   140, /* RFC 9254, application/yang-data+cbor; id=sid */
+  // TODO after IANA preallocation, change all (u16) COAP_CF_YANG_IDENTIFIERS to (u8) COAP_CF...
+  COAP_CF_YANG_IDENTIFIERS      = 65000, /* draft-ietf-core-comi, application/yang-identifiers+cbor-seq
+                                          * value is TBD2 */
+  // TODO after IANA preallocation, do similar action to COAP_CF_YANG_IDENTIFIERS
+  COAP_CF_YANG_INSTANCES        = 65001, /* draft-ietf-core-comi, application/yang-instances+cbor-seq
+                                          * value is TBD3 */
+
+  COAP_CF_YANG_CBOR_MIXED       =   340, /* RFC 9254, application/yang-data+cbor */
+  COAP_CF_YANG_CBOR_NAMES       =   341, /* RFC 9254, application/yang-data+cbor; id=name */
+  COAP_CF_NO_VALUE              = 65535, /* RFC 7252, Experimental Use -- no Content-Format present, or unknown CF */
+};
 
 enum coap_parse_state {
   COAP_PS_EMPTY = 0,			/* Nothing parsed */
