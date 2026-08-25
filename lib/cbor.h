@@ -180,9 +180,14 @@ static inline void cbor_parser_free(struct cbor_parser_context *ctx)
 void cbor_parser_reset(struct cbor_parser_context *ctx);
 
 enum cbor_parse_result {
-  CPR_ERROR	  = 0,
-  CPR_MORE	  = 1,
-  CPR_MAJOR	  = 2,
+  CPR_ERROR	  = 0,	/* Something went wrong, parser failed */
+  CPR_MORE	  = 1,	/* Not enough data, enter more bytes into the parser */
+  CPR_MAJOR	  = 2,	/* We now know the value type in (context)->type.
+			   If CBOR_POSINT, CBOR_NEGINT, or CBOR_SPECIAL, get the value from (context)->value and tflags.
+			   If CBOR_BYTES or CBOR_TEXT, continue feeding more data
+			   until you get CPR_STR_END.
+			   If CBOR_MAP or CBOR_ARRAY, the header has been parsed,
+			   continue parsing the inside. */
   CPR_STR_END	  = 3,
   CPR_STR_BUF_END = 4,
 } cbor_parse_byte(struct cbor_parser_context *, const byte);

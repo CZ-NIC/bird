@@ -246,6 +246,25 @@ void cbor_parser_reset(struct cbor_parser_context *ctx)
   return CPR_ERROR;				\
 } while (0)
 
+/**
+ * cbor_parse_byte - add another byte to parse as CBOR
+ *
+ * @ctx: parser context
+ * @bp: the next byte
+ *
+ * The parser context keeps all the state as needed to parse the incoming
+ * incomplete CBOR message. In many scenarios, parsing one byte yields at
+ * most one state change of a limited amount of possibilities (returned in
+ * enum cbor_parse_result).
+ *
+ * Whenever an item is parsed completely, i.e. complete integer, string
+ * or special value, it may have been the last item in an array or map.
+ * In such cases, the user must call, before parsing another byte,
+ * cbor_parse_block_end(), until that function returns false.
+ *
+ * Return value: the user-facing parse result.
+ */
+
 enum cbor_parse_result
 cbor_parse_byte(struct cbor_parser_context *ctx, const byte bp)
 {
@@ -386,6 +405,7 @@ cbor_parse_byte(struct cbor_parser_context *ctx, const byte bp)
   return CPR_MORE;
 }
 
+/* Return true if a CBOR_MAP or CBOR_ARRAY block just ended */
 bool
 cbor_parse_block_end(struct cbor_parser_context *ctx)
 {
