@@ -23,7 +23,7 @@
 #define NET_ROA6	6
 #define NET_FLOW4	7
 #define NET_FLOW6	8
-#define NET_RTC	15
+#define NET_RTC		15
 #define NET_IP6_SADR	9
 #define NET_ETH		10
 #define NET_MPLS	11
@@ -40,7 +40,7 @@
 #define NB_ROA6		(1 << NET_ROA6)
 #define NB_FLOW4	(1 << NET_FLOW4)
 #define NB_FLOW6	(1 << NET_FLOW6)
-#define NB_RTC	(1 << NET_RTC)
+#define NB_RTC		(1 << NET_RTC)
 #define NB_IP6_SADR	(1 << NET_IP6_SADR)
 #define NB_ETH		(1 << NET_ETH)
 #define NB_MPLS		(1 << NET_MPLS)
