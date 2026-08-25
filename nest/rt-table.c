@@ -132,7 +132,6 @@ struct rt_cork rt_cork;
 static void rt_free_hostcache(struct rtable_private *tab);
 static void rt_hcu_uncork(callback *);
 static void rt_update_hostcache(callback *);
-static void rte_recalculate_best_locked(struct rtable_private *table);
 static void rt_next_hop_update(void *_tab);
 static void rt_nhu_uncork(callback *);
 static inline void rt_next_hop_resolve_rte(rte *r);
@@ -2091,7 +2090,7 @@ rte_announce_best(struct rtable_private *tab, const struct netindex *i UNUSED, n
 	     const rte *new_best, const rte *old_best)
 {
   /* Update network count */
-  tab->net_count += (!!new_best - !!old_best);
+  tab->best_rte_count += (!!new_best - !!old_best);
 
   int new_best_valid = rte_is_valid(new_best);
   int old_best_valid = rte_is_valid(old_best);
@@ -2331,21 +2330,28 @@ rte_same(const rte *x, const rte *y)
     rte_is_filtered(x) == rte_is_filtered(y);
 }
 
+enum is_rte_better
+{
+  OLD_RTE_BETTER = 0,
+  NEW_RTE_BETTER = 1,
+  CANT_CHOOSE_BETTER = 2,
+};
+
 static int
-rte_better_(const rte ** best_rte_preselection, const rte *new, const rte *old)
+rte_better(const rte ** best_rte_preselection, const rte *new, const rte *old)
 {
   if (!rte_is_valid(new))
-    return 0;
+    return OLD_RTE_BETTER;
   if (!rte_is_valid(old))
-    return 1;
+    return NEW_RTE_BETTER;
 
   u32 np = rt_get_preference(new);
   u32 op = rt_get_preference(old);
 
   if (np > op)
-    return 1;
+    return NEW_RTE_BETTER;
   if (np < op)
-    return 0;
+    return OLD_RTE_BETTER;
 
   if (old->src->owner->class != new->src->owner->class)
   {
@@ -2357,56 +2363,55 @@ rte_better_(const rte ** best_rte_preselection, const rte *new, const rte *old)
       return old->src->owner->class > new->src->owner->class;
   }
   if (best_rte_preselection[0]->src->owner->class->rte_best)
-    return 2; /* decision is on protocol*/
-  return 0;
+    return CANT_CHOOSE_BETTER; /* decision is on protocol*/
+  return OLD_RTE_BETTER;
 }
 
 const rte *
-rte_best_selection(struct rtable_private *table, net *nn)
+rte_select_best(struct rtable_private *table, net *nn)
 {
   /* Field used for preselection of the best route.
   * We can not allways determine the best route
   * in the first walk (bgp MED).
-  * The only reason, why is this field global,
-  * is that it would be allocated and freed too often.
   */
   u32 best_rte_sel_size = 32;
   const rte ** best_rte_preselection = tmp_alloc(sizeof(rte *)*32);
 
-  uint ptr = 0;
+  uint idx = 0; /* First free index in best_rte_preselection */
   const rte *old = NULL;
   const rte **new_field;
-  best_rte_preselection[0] = NULL;
 
   NET_WALK_ROUTES(table, nn, ep, e)
   {
-    switch (rte_better_(best_rte_preselection, &e->rte, old))
+    switch (rte_better(best_rte_preselection, &e->rte, old))
     {
-      case 1:
-        ptr = 0;
+      case NEW_RTE_BETTER:
+        /* No matter how many routes we have preselected, this one is better than all of them. */
         best_rte_preselection[0] = &e->rte;
         old = &e->rte;
+        idx = 1;
         break;
-      case 2:
-        ptr++;
-
-        if (best_rte_sel_size < ptr)
+      case CANT_CHOOSE_BETTER:
+        /* Right now we cant decide between new route and already preselected ones.
+         * Lets add it to the list. */
+        if (best_rte_sel_size <= idx)
         {
-          new_field = tmp_alloc(sizeof(rte *)*ptr*2);
-          best_rte_sel_size = ptr * 2;
-          memcpy(new_field, best_rte_preselection, sizeof(rte *) * ptr);
+          new_field = tmp_alloc(sizeof(rte *)*idx*2);
+          best_rte_sel_size = idx * 2;
+          memcpy(new_field, best_rte_preselection, sizeof(rte *) * idx);
           best_rte_preselection = new_field;
         }
 
-        best_rte_preselection[ptr] = &e->rte;
+        best_rte_preselection[idx] = &e->rte;
+        idx++;
         break;
-      case 0:
+      case OLD_RTE_BETTER:
       /* nothing to change */
       ;
      }
   }
 
-  if (ptr == 0)
+  if (idx <= 1)
   {
     if (!rte_is_valid(best_rte_preselection[0]))
       return NULL;
@@ -2415,14 +2420,15 @@ rte_best_selection(struct rtable_private *table, net *nn)
   }
   /* more routes - bgp MED? */
   ASSERT_DIE(best_rte_preselection[0]->src->owner->class->rte_best);
-  return best_rte_preselection[0]->src->owner->class->rte_best(best_rte_preselection, ptr + 1);
+  /* Send the preselected routes to their protocol, it will decide. */
+  return best_rte_preselection[0]->src->owner->class->rte_best(best_rte_preselection, idx);
 }
 
 
 static inline int rte_is_ok(const rte *e) { return e && !rte_is_filtered(e); }
 
 static void
-rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct netindex *i, net *net, rte *new, struct rte_src *src)
+rte_replace(struct rtable_private *table, struct rt_import_hook *c, struct netindex *i, net *net, rte *new, struct rte_src *src)
 {
   struct rt_import_request *req = c->req;
   struct rt_import_stats *stats = &c->stats;
@@ -2547,24 +2553,41 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
       if (e == old_stored)
       {
 	ASSERT_DIE(e->rte.src == src);
-	atomic_store_explicit(ep,
-	    atomic_load_explicit(&e->next, memory_order_relaxed),
-	    memory_order_release);
+        struct rte_storage *ep_next = atomic_load_explicit(&e->next, memory_order_relaxed);
+
+        if (new_stored)
+        {
+          /* If we have both old and new, there must be at least one of them in the link list at any time. */
+          atomic_store_explicit(&new_stored->next, ep_next, memory_order_relaxed);
+          ep_next = new_stored;
+        }
+
+        /* Finally store to the linked list */
+	ASSERT_DIE(atomic_compare_exchange_strong_explicit(
+                ep, &old_stored, ep_next, memory_order_relaxed, memory_order_relaxed));
+
+        if (atomic_load_explicit(&net->routes, memory_order_relaxed) == NULL)
+          /* We removed the last route from this net */
+          table->net_count--;
+
 	ASSERT_DIE(!seen++);
       }
       old_stored->flags |= REF_OBSOLETE;
     }
     ASSERT_DIE(seen == 1);
   }
-
-  if (new_stored)
+  else if (new_stored)
   {
-  /* store it */
+    /* Store it. If there was old route, the new was already stored in if-branch */
     struct rte_storage *next = atomic_load_explicit(&net->routes, memory_order_relaxed);
-    do {
+
     atomic_store_explicit(&new_stored->next, next, memory_order_relaxed);
-    } while (!atomic_compare_exchange_strong_explicit(&net->routes,
+    ASSERT_DIE(atomic_compare_exchange_strong_explicit(&net->routes,
        &next, new_stored, memory_order_relaxed, memory_order_relaxed));
+
+    if (next == NULL)
+      /* We just added the first route to the net. */
+      table->net_count++;
   }
 
   /* Log the route change */
@@ -2587,7 +2610,7 @@ rte_recalculate_best_for_net(struct rtable_private *table, net *nets, const stru
   net *nn = &nets[ni->index];
 
   const rte *old_best = NET_BEST_ROUTE(nn);
-  const rte *best = rte_best_selection(table, nn);
+  const rte *best = rte_select_best(table, nn);
 
 #if 0
   if (table->config->sorted)
@@ -2907,7 +2930,7 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
     nn = &routes[i->index];
 
     /* Recalculate the best route. */
-    rte_recalculate(tab, hook, i, nn, new, src);
+    rte_replace(tab, hook, i, nn, new, src);
   }
 }
 
@@ -2994,7 +3017,7 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, struct bmap *seen, bool (*p
   {
     if (!ecnt && prefilter)
     {
-      struct rte_storage *best = NET_READ_BEST_ROUTE(tr, n);
+      struct rte_storage *best = NET_BEST_RTE_STOR(n);
 
       if (best && !prefilter(f, best->rte.net))
 	return NULL;
@@ -4139,7 +4162,7 @@ rt_prune_net(struct rtable_private *tab, struct network *n)
     {
       /* Announce withdrawal */
       struct netindex *i = RTE_GET_NETINDEX(&e->rte);
-      rte_recalculate(tab, e->rte.sender, i, n, NULL, e->rte.src);
+      rte_replace(tab, e->rte.sender, i, n, NULL, e->rte.src);
       return 1;
     }
   }

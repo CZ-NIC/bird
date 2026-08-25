@@ -405,6 +405,7 @@ struct rtable_private {
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
   u32 net_count;			/* Number of nets in the table */
+  u32 best_rte_count;                   /* Number of best routes in the table */
   u32 debug;				/* Debugging flags (D_*) */
 
   list imports;				/* Registered route importers */
@@ -797,9 +798,9 @@ static inline void rt_unlock_table_pub(rtable *t, const char *file, uint line)
 { RT_LOCKED(t, tt) rt_unlock_table_priv(tt, file, line); }
 
 #define rt_lock_table(t)	_Generic((t),  rtable *: rt_lock_table_pub, \
-				struct rtable_private *: rt_lock_table_priv)((t), __FILE__, __LINE__);
+				struct rtable_private *: rt_lock_table_priv)((t), __FILE__, __LINE__)
 #define rt_unlock_table(t)	_Generic((t),  rtable *: rt_unlock_table_pub, \
-				struct rtable_private *: rt_unlock_table_priv)((t), __FILE__, __LINE__);
+				struct rtable_private *: rt_unlock_table_priv)((t), __FILE__, __LINE__)
 
 const struct f_trie * rt_lock_trie(struct rtable_private *tab);
 void rt_unlock_trie(struct rtable_private *tab, const struct f_trie *trie);

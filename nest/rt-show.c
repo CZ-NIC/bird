@@ -201,7 +201,7 @@ rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *
     else
       ia[0] = 0;
 
-    rt_show_rte(c, ia, e, d, !d->tab->prefilter && !i);
+    rt_show_rte(c, ia, e, d, !d->tab->prefilter && !primary);
     *first_show = 0;
     *last_label = label;
   }
