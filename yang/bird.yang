@@ -86,4 +86,23 @@ module bird {
       }
     }
   }
+
+  rpc cli-show-status {
+    description "CLI: show status";
+    output {
+      leaf status {
+	type string;
+      }
+    }
+  }
+
+  rpc cli-load-config {
+    input {
+      container load-config {
+	leaf name {
+	  type string;
+	}
+      }
+    }
+  }
 }
