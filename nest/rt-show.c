@@ -107,16 +107,15 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   }
 }
 
-/* returns 1 if for loop in rt_show_net can continue, 0 if not */
-static int
+/**
+ * rt_show_net_rte - Assess whether a route shall be displayed
+ **/
+static void
 rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *e, int *first,
-    int *first_show, uint *last_label, int *pass, byte *ia, u32 ia_len, int i)
+    int *first_show, uint *last_label, int *pass, byte *ia, u32 ia_len, bool primary)
 {
-  if (e->flags & REF_OBSOLETE)
-    return 0;
-
   if (!d->tab->prefilter && (rte_is_filtered(e) != d->filtered))
-    return 1;
+    return;
 
   struct cli *c = d->cli;
   struct channel *ec = d->tab->export_channel;
@@ -125,22 +124,22 @@ rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *
   *first = 0;
 
   if (*pass)
-    return 1;
+    return;
 
   if (d->tab->prefilter)
     if (e->sender != d->tab->prefilter->in_req.hook)
-      return 1;
+      return;
     else
       e->attrs = ea_strip_to(e->attrs, BIT32_ALL(EALS_PREIMPORT));
 
   /* Export channel is down, do not try to export routes to it */
   if (ec && (rt_export_get_state(&ec->out_req) == TES_DOWN))
-    goto skip;
+    return;
 
   if (d->export_mode == RSEM_EXPORTED)
   {
     if (!bmap_test(&ec->export_accepted_map, e->id))
-      goto skip;
+      return;
   }
   else if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
   {
@@ -151,7 +150,7 @@ rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *
     if (em)
       e = em;
     else
-      goto skip;
+      return;
   }
   else if (d->export_mode)
   {
@@ -162,7 +161,7 @@ rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *
       *pass = 1;
 
     if (ic < 0)
-      goto skip;
+      return;
 
     if (d->export_mode > RSEM_PREEXPORT)
     {
@@ -175,7 +174,7 @@ rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *
 	(f_run(ec->out_filter, e, FF_SILENT) <= F_ACCEPT);
 
       if (do_export != (d->export_mode == RSEM_EXPORT))
-	goto skip;
+	return;
 
       if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_ACCEPTED))
 	*pass = 1;
@@ -183,10 +182,10 @@ rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *
   }
 
   if (d->show_protocol && (&d->show_protocol->sources != e->src->owner))
-    goto skip;
+    return;
 
   if (f_run(d->filter, e, 0) > F_ACCEPT)
-    goto skip;
+    return;
 
   if (d->stats < 2)
   {
@@ -208,12 +207,7 @@ rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *
   }
 
   d->show_counter++;
-
-  skip:
-    if (d->primary_only)
-      return 0;
-#undef e
-  return 1;
+  return;
 }
 
 static void
@@ -230,18 +224,20 @@ rt_show_net(struct rt_show_data *d, const struct rt_export_feed *feed)
   int first_show = 1;
   uint last_label = 0;
   int pass = 0;
-  int cont = 1;
 
+  /* First we need to display the best route */
   if (feed->best_rte_idx != (u32) ~0)
-    cont = rt_show_net_rte(d, feed, &feed->block[feed->best_rte_idx], &first,
+    rt_show_net_rte(d, feed, &feed->block[feed->best_rte_idx], &first,
         &first_show, &last_label, &pass, ia, sizeof(ia), 0);
 
-  for (uint i = 0; cont && i < feed->count_routes; i++)
-  {
-    if (i != feed->best_rte_idx)
-      cont = rt_show_net_rte(d, feed, &feed->block[i], &first,
-          &first_show, &last_label, &pass, ia, sizeof(ia), 1);
-  }
+  /* Then display all others */
+  if (!d->primary_only)
+    for (uint i = 0; i < feed->count_routes; i++)
+    {
+      if (i != feed->best_rte_idx)
+	rt_show_net_rte(d, feed, &feed->block[i], &first,
+	    &first_show, &last_label, &pass, ia, sizeof(ia), 1);
+    }
 
   if ((d->show_counter - d->show_counter_last_flush) > 64)
   {
