@@ -16,6 +16,7 @@ CF_HDR
 #include "lib/socket.h"
 #include "lib/timer.h"
 #include "lib/string.h"
+#include "lib/rtc.h"
 #include "lib/evpn.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
@@ -74,93 +75,6 @@ cf_assert_type(const struct f_val val, enum f_type type)
 {
   if (val.type != type)
     cf_error("%s expected", cf_type_name(type));
-}
-
-static struct net_addr *
-new_rtc_item(const char *type_str, u32 asn, struct f_val asn_ip, u32 val, int pxlen)
-{
-  struct net_addr_rtc *n = cfg_allocz(sizeof(struct net_addr_rtc));
-
-  u64 rt = 0;
-  u64 type = 0;
-
-  if (type_str)
-  {
-    if (strcmp(type_str, "rt-as2") == 0)
-      type = 0x0002;
-    else if (strcmp(type_str, "rt-ip4") == 0)
-      type = 0x0102;
-    else if (strcmp(type_str, "rt-as4") == 0)
-      type = 0x0202;
-    else if (strcmp(type_str, "rt") == 0)
-    {
-      if (asn_ip.type == T_INT)
-      {
-	if (asn > 0xffff)
-	  type = 0x0202;
-	else
-	  type = 0x0002;
-      }
-      else if (asn_ip.type == T_IP)
-	type = 0x0102;
-      else
-	cf_error("Unknown RT constraint type");
-    }
-    else
-      cf_error("Unknown RT constraint type");
-  }
-
-  rt |= type << 48;
-
-  if (type == 0x0002)
-  {
-    if (asn_ip.val.i > 0xffff)
-      cf_error("ASN out of range for type 0x0002");
-
-    // f_val.val.i is uint, ASN is u32, OK or not OK?
-
-    rt |= ((u64)asn_ip.val.i & 0xffff) << 16;
-    rt |= val & 0xffffffff;
-  }
-  else if (type == 0x0102)
-  {
-    if (val > 0xffff)
-      cf_error("Value out of range for type 0x0102");
-
-    rt |= ((u64)ip4_to_u32(ipa_to_ip4(asn_ip.val.ip))) << 16;
-    rt |= val & 0xffff;
-  }
-  else if (type == 0x0202)
-  {
-    if (val > 0xffff)
-      cf_error("Value out of range for type 0x0202");
-
-    rt |= (u64)asn_ip.val.i << 48;
-    rt |= val & 0xffff;
-  }
-  else	  /* type == 0 */
-  {
-    /* RT constraint has no type, it's just a 64-bit number */
-
-    if (asn_ip.type != T_EC)
-      cf_error("Invalid type");
-
-    rt = asn_ip.val.ec;
-  }
-
-  /*
-   * If pxlen lies at the boundary of ASN/IPv4 and value field (indicated by -1),
-   * set the correct value according to type.
-   */
-  if (pxlen == -1)
-    pxlen = (type == 0x0002) ? 32 : 48;
-
-  net_fill_rtc((net_addr *)n, asn, vrt_from_u64(rt), (u32)pxlen);
-
-  if (!net_validate_rtc(n))
-    cf_error("Invalid net");
-
-  return (net_addr *)n;
 }
 
 
@@ -609,12 +523,12 @@ asn_or_ip4_:
  ;
 
 rt_constraint_:
-   '(' NUM '/' NUM ')' AS NUM { $$ = new_rtc_item(NULL, $7, (struct f_val) { .type = T_EC, .val.ec = $2 }, 0, $4); }
- | '(' TEXT ',' '*' ',' '*' ')'			AS NUM	{ $$ = new_rtc_item($2, $9, (struct f_val) { .type = T_INT, .val.i = 0 }, 0, 16); }
- | '(' TEXT ',' asn_or_ip4_ '/' NUM ',' '*' ')' AS NUM	{ $$ = new_rtc_item($2, $11, $4, 0,  $6); }
- | '(' TEXT ',' asn_or_ip4_ ',' '*' ')'		AS NUM	{ $$ = new_rtc_item($2, $9,  $4, 0,  -1); }
- | '(' TEXT ',' asn_or_ip4_ ',' NUM '/' NUM ')' AS NUM	{ $$ = new_rtc_item($2, $11, $4, $6, $8); }
- | '(' TEXT ',' asn_or_ip4_ ',' NUM ')'		AS NUM	{ $$ = new_rtc_item($2, $9,  $4, $6, 64); }
+   '(' NUM '/' NUM ')' AS NUM { $$ = rtc_parse(NULL, $7, (struct f_val) { .type = T_EC, .val.ec = $2 }, 0, $4); }
+ | '(' TEXT ',' '*' ',' '*' ')'			AS NUM	{ $$ = rtc_parse($2, $9, (struct f_val) { .type = T_INT, .val.i = 0 }, 0, 16); }
+ | '(' TEXT ',' asn_or_ip4_ '/' NUM ',' '*' ')' AS NUM	{ $$ = rtc_parse($2, $11, $4, 0,  $6); }
+ | '(' TEXT ',' asn_or_ip4_ ',' '*' ')'		AS NUM	{ $$ = rtc_parse($2, $9,  $4, 0,  -1); }
+ | '(' TEXT ',' asn_or_ip4_ ',' NUM '/' NUM ')' AS NUM	{ $$ = rtc_parse($2, $11, $4, $6, $8); }
+ | '(' TEXT ',' asn_or_ip4_ ',' NUM ')'		AS NUM	{ $$ = rtc_parse($2, $9,  $4, $6, 64); }
  ;
 
 net_rtc_ : RTC rt_constraint_

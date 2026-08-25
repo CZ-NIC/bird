@@ -3,6 +3,7 @@
 #include "lib/ip.h"
 #include "lib/net.h"
 #include "lib/flowspec.h"
+#include "lib/rtc.h"
 #include "nest/attrs.h"
 
 
@@ -15,7 +16,7 @@ const char * const net_label[] = {
   [NET_ROA6]	= "roa6",
   [NET_FLOW4]	= "flow4",
   [NET_FLOW6]	= "flow6",
-  [NET_RTC] = "rt-filter",
+  [NET_RTC]	= "rtc",
   [NET_IP6_SADR]= "ipv6-sadr",
   [NET_ETH]	= "eth",
   [NET_MPLS]	= "mpls",
@@ -33,7 +34,7 @@ const u16 net_addr_length[] = {
   [NET_ROA6]	= sizeof(net_addr_roa6),
   [NET_FLOW4]	= 0,
   [NET_FLOW6]	= 0,
-  [NET_RTC] = sizeof(net_addr_rtc),
+  [NET_RTC]	= sizeof(net_addr_rtc),
   [NET_IP6_SADR]= sizeof(net_addr_ip6_sadr),
   [NET_ETH]	= sizeof(net_addr_eth),
   [NET_MPLS]	= sizeof(net_addr_mpls),
@@ -51,7 +52,7 @@ const u8 net_max_prefix_length[] = {
   [NET_ROA6]	= IP6_MAX_PREFIX_LENGTH,
   [NET_FLOW4]	= IP4_MAX_PREFIX_LENGTH,
   [NET_FLOW6]	= IP6_MAX_PREFIX_LENGTH,
-  [NET_RTC] = 64,
+  [NET_RTC]	= 64,
   [NET_IP6_SADR]= IP6_MAX_PREFIX_LENGTH,
   [NET_ETH]	= 0,
   [NET_MPLS]	= 0,
@@ -69,7 +70,7 @@ const u16 net_max_text_length[] = {
   [NET_ROA6]	= 60,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128-128 AS4294967295" */
   [NET_FLOW4]	= 0,	/* "flow4 { ... }" */
   [NET_FLOW6]	= 0,	/* "flow6 { ... }" */
-  [NET_RTC] = 38,	/* "4294967296:4294967296/128 AS4294967295" */
+  [NET_RTC]	= 38,	/* "4294967296:4294967296/128 AS4294967295" */
   [NET_IP6_SADR]= 92,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128 from ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
   [NET_ETH]	= 28,	/* "11:22:33:44:55:66 vlan 65535" */
   [NET_MPLS]	= 7,	/* "1048575" */
@@ -88,7 +89,7 @@ STATIC_ASSERT(sizeof(net_addr_roa4)	== 16);
 STATIC_ASSERT(sizeof(net_addr_roa6)	== 28);
 STATIC_ASSERT(sizeof(net_addr_flow4)	==  8);
 STATIC_ASSERT(sizeof(net_addr_flow6)	== 20);
-STATIC_ASSERT(sizeof(net_addr_rtc)== 16);
+STATIC_ASSERT(sizeof(net_addr_rtc)	== 16);
 STATIC_ASSERT(sizeof(net_addr_ip6_sadr)	== 40);
 STATIC_ASSERT(sizeof(net_addr_eth)	== 12);
 STATIC_ASSERT(sizeof(net_addr_mpls)	==  8);
@@ -113,7 +114,7 @@ STATIC_ASSERT(alignof(net_addr_flow4)	== alignof(net_addr));
 STATIC_ASSERT(alignof(net_addr_flow6)	== alignof(net_addr));
 STATIC_ASSERT(alignof(net_addr_flow4)	== alignof(net_addr));
 STATIC_ASSERT(alignof(net_addr_flow6)	== alignof(net_addr));
-STATIC_ASSERT(alignof(net_addr_rtc)== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_rtc)	== alignof(net_addr));
 STATIC_ASSERT(alignof(net_addr_ip6_sadr) == alignof(net_addr));
 STATIC_ASSERT(alignof(net_addr_eth)	== alignof(net_addr));
 STATIC_ASSERT(alignof(net_addr_mpls)	== alignof(net_addr));
@@ -179,11 +180,7 @@ net_format(const net_addr *N, char *buf, int buflen)
   case NET_FLOW6:
     return flow6_net_format(buf, buflen, &n->flow6);
   case NET_RTC:
-    {
-    int c = ec_format(buf, vrt_to_u64(n->rtc.rt));
-    ADVANCE(buf, buflen, c);
-    return bsnprintf(buf, buflen, "/%u AS%u", n->rtc.pxlen, n->rtc.asn);
-    }
+    return rtc_format(buf, buflen, &n->rtc);
   case NET_IP6_SADR:
     return bsnprintf(buf, buflen, "%I6/%d from %I6/%d", n->ip6_sadr.dst_prefix, n->ip6_sadr.dst_pxlen, n->ip6_sadr.src_prefix, n->ip6_sadr.src_pxlen);
   case NET_ETH:

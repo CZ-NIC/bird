@@ -196,7 +196,7 @@ net_type_base:
  | ETH  { $$ = NET_ETH; }
  | ASPA { $$ = NET_ASPA; }
  | EVPN { $$ = NET_EVPN; }
- | RTC { $$ = NET_RTC; }
+ | RTC  { $$ = NET_RTC; }
  ;
 
 net_type:
@@ -856,7 +856,7 @@ channel_sym:
  | NEIGHBORS	{ $$ = "neighbors"; }
  | PRI		{ $$ = "pri"; }
  | SEC		{ $$ = "sec"; }
- | RTC	{ $$ = "rtc"; }
+ | RTC		{ $$ = "rtc"; }
  ;
 
 channel_arg:
