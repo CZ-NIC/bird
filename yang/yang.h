@@ -1,5 +1,5 @@
 /*
- *	BIRD -- YANG-CBOR / CORECONF api
+ *	BIRD -- YANG-CBOR / CORECONF ap/
  *
  *	(c) 2026       Maria Matejka <mq@jmq.cz>
  *	(c) 2026       CZ.NIC, z.s.p.o.
@@ -23,23 +23,63 @@ enum yang_model {
   YANG_MODEL__MAX,
 };
 
+enum coreconf_state {
+   CC_COAP_HEADER,
+   CC_CHECK_HEADER,
+   CC_YL_SEND,
+   CC_CREATE_SUBSCRIPTION,
+   CC_OP,
+   CC_RPC_ACTION,
+   CC_DONE,
+   CC_ERROR,
+};
+
+extern const char *coreconf_state_names[];
+enum resource_type {
+   UNKNOWN_RESOURCE = 0,
+   CORECONF_DATASTORE = 1,
+   CORECONF_YANG_LIB,
+   CORECONF_EVENT_STREAM,
+   CORECONF_RPC_ACTION,
+   CORECONF_DATA_NODE, // used only in /.well-known/core
+   CORE_WELL_KNOWN,
+};
+
 /* YANG session runtime structure */
 struct yang_session {
   struct yang_socket *socket;
   struct birdsock *sock;
   struct coap_session coap;
   struct cbor_parser_context *cbor;
+  struct cbor_writer cbor_writer;
+  struct coap_tx_opt_fixed {
+    u32 len;
+    enum coap_option_id type;
+    char buf[2048];
+  } cbor_b;
+  //char *write_buffer;
+  //uint write_buff_len;
   bool error_sent;
   const struct yang_url_node **url;
   bool (*endpoint)(struct yang_session *);
   uint url_pos;
   u64 sid_stack[16];
+  u16 accept;
+  u16 cont_format; /* CoAP Content-Format option. */
   int sid_pos;
   enum yang_parser_state {
     YANG_PS_VALUE = 0,
     YANG_PS_RELATIVE_SID = 1,
     YANG_PS_ABSOLUTE_SID = 2,
   } sid_state;
+  enum coreconf_state coreconf_state;
+  enum resource_type resource_type;
+  enum resource_type core_query; // used as storage for ? queries on /.well-known/core
+  bool core_report_all; // we report full /.well-known/core for unknown queries
+  linpool *parse_stack;
+  linpool *gen_stack;
+
+  struct uytc_rpc_data *rpc;
 };
 
 /* YANG socket parameters */
@@ -134,6 +174,7 @@ struct yang_api {
 struct yang_url_node {
   bool (*endpoint)(struct yang_session *);
   const char *stem;
+  const enum resource_type resource_type;
   const struct yang_url_node *children[];
 };
 
@@ -144,5 +185,58 @@ extern const struct yang_url_node *yang_url_tree[YANG_MODEL__MAX];
 struct config;
 void yang_commit(struct config *, struct config *);
 void yang_init(void);
+
+enum yang_proc_state yang_common_coap_endpoint(struct yang_session *se);
+
+/* pre-UYTC gen junk */
+enum uytc_rpc_state {
+  RPC_BEGIN,
+  RPC_ID,
+  RPC_BODY,
+  RPC_PARSING,
+  RPC_PROC,
+  RPC_GEN,
+  RPC_DONE,
+};
+
+struct coreconf_error {
+  u64 error_tag_sid;
+  u64 error_app_tag_sid;
+  void *data_node;
+  const char *msg;
+};
+
+struct uytc_rpc_data {
+  enum uytc_rpc_state state;
+  void *in_data;
+  void *out_data;
+  enum yang_proc_state (*in_fn)(struct yang_session *se, void **in_data);
+  bool (*rpc)(void *in_data, void **out_data); // return false on error
+  enum yang_proc_state (*out_fn)(struct yang_session *se, void *out_data);
+};
+
+enum show_status_state {
+  STATUS_BEGIN,
+  STATUS_WRITER_READY,
+  STATUS_MAP,
+  STATUS_SID,
+  STATUS_MAP2,
+  STATUS_SID2,
+  STATUS_CLOSE,
+  STATUS_CLOSE2,
+  STATUS_DONE,
+};
+
+struct rpc_show_status {
+  enum show_status_state state;
+};
+
+struct rpc_show_status_out {
+  struct rpc_show_status status;
+  char *curr;
+  char data[2048];
+};
+
+extern pool *yang_pool;
 
 #endif /* _BIRD_YANG_API_H_ */
