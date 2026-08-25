@@ -1,0 +1,18 @@
+[project]
+name = "coreconf-test"
+version = "0.1.0"
+description = "Test bird implementation of CORECONF protocol"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiocoap>=0.4.17",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+license = "LGPL-3.0-or-later"
+authors = [
+    { name = "Vojtech Vilimek", email = "vojtech.vilimek@nic.cz" }
+]
+
+[tool.pytest.ini_options]
+python_files = ["test.py"]
