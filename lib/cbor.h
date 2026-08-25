@@ -144,7 +144,7 @@ struct cbor_parser_context {
   /* Public part */
   linpool *lp;			/* Linpool for in-parser allocations */
 
-  byte type;			/* Last parsed type */
+  enum cbor_basic_type type;			/* Last parsed type */
   enum {
     CPT_VARLEN = 1,
   } tflags;			/* Additional flags for the type / value pair */
@@ -162,6 +162,7 @@ struct cbor_parser_context {
     CPE_TYPE = 0,
     CPE_READ_INT,
     CPE_COMPLETE_INT,
+    //CPE_READ_CHUNKED,
     CPE_READ_BYTE,
     CPE_ITEM_DONE,
     CPE_EXIT,
@@ -179,10 +180,11 @@ static inline void cbor_parser_free(struct cbor_parser_context *ctx)
 void cbor_parser_reset(struct cbor_parser_context *ctx);
 
 enum cbor_parse_result {
-  CPR_ERROR	= 0,
-  CPR_MORE	= 1,
-  CPR_MAJOR	= 2,
-  CPR_STR_END	= 3,
+  CPR_ERROR	  = 0,
+  CPR_MORE	  = 1,
+  CPR_MAJOR	  = 2,
+  CPR_STR_END	  = 3,
+  CPR_STR_BUF_END = 4,
 } cbor_parse_byte(struct cbor_parser_context *, const byte);
 bool cbor_parse_block_end(struct cbor_parser_context *);
 

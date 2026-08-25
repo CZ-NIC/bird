@@ -261,7 +261,7 @@ cbor_parse_byte(struct cbor_parser_context *ctx, const byte bp)
 
     case CPE_TYPE:
       /* Split the byte to type and value */
-      ctx->type = bp >> 5;
+      ctx->type = (enum cbor_basic_type) bp >> 5;
       ctx->value = bp & 0x1f;
 
       if (ctx->type == 7)
@@ -318,20 +318,30 @@ cbor_parse_byte(struct cbor_parser_context *ctx, const byte bp)
       /* Some types are completely parsed, some not yet */
       switch (ctx->type)
       {
-	case 0:
-	case 1:
-	case 7:
+	case CBOR_POSINT:
+	case CBOR_NEGINT:
+	case CBOR_SPECIAL:
 	  ctx->partial_state = CPE_ITEM_DONE;
 	  break;
 
-	case 2:
-	case 3:
+	case CBOR_BYTES:
+	case CBOR_TEXT:
+	  /* TODO indef byte and text strings */
 	  ctx->partial_state = CPE_READ_BYTE;
-	  ctx->partial_countdown = ctx->value;
+	  //ctx->partial_countdown = ctx->value;
+	  if (++ctx->stack_pos > ctx->stack_max)
+	    CBOR_PARSER_ERROR("Stack too deep");
+
+	  /* set byte/text string size;
+	   * ~0 for indefinite, plus one for the array/map head itself */
+	  if (ctx->tflags & CPT_VARLEN)
+	    bug("indef byte/text strings not implemented");
+	  ctx->stack_countdown[ctx->stack_pos] = (ctx->tflags & CPT_VARLEN) ? ~0ULL : ctx->value;
+	  //ctx->partial_state = (ctx->tflags & CPT_VARLEN) ? CPE_READ_CHUNKED : CPE_READ_BYTE;
 	  break;
 
-	case 4:
-	case 5:
+	case CBOR_ARRAY:
+	case CBOR_MAP:
 	  if (++ctx->stack_pos >= ctx->stack_max)
 	    CBOR_PARSER_ERROR("Stack too deep");
 
@@ -342,20 +352,35 @@ cbor_parse_byte(struct cbor_parser_context *ctx, const byte bp)
 	    (ctx->value * (ctx->type - 3)) ;
 	  ctx->partial_state = CPE_TYPE;
 	  break;
+
+	case CBOR_TAG:
+	  bug("not implemented");
       }
 
       /* Process the value */
       return CPR_MAJOR;
 
     case CPE_READ_BYTE:
+      if (!ctx->stack_countdown[ctx->stack_pos])
+      {
+	ctx->target_buf = NULL;
+	ctx->partial_state = CPE_ITEM_DONE;
+	return CPR_STR_END;
+      }
+
       *ctx->target_buf = bp;
       ctx->target_buf++;
+      if (!--ctx->stack_countdown[ctx->stack_pos])
+      {
+	ctx->target_buf = NULL;
+	ctx->partial_state = CPE_ITEM_DONE;
+	return CPR_STR_END;
+      }
+
       if (--ctx->target_len)
 	break;
 
-      ctx->target_buf = NULL;
-      ctx->partial_state = CPE_ITEM_DONE;
-      return CPR_STR_END;
+      return CPR_STR_BUF_END;
   }
 
   return CPR_MORE;
@@ -518,14 +543,14 @@ void write_item(struct cbor_writer *writer, uint8_t major, uint64_t num)
     return;
   }
   //log("write item major %i num %i writer->pt %i writer->capacity %i writer %i", major, num, writer->pt, writer->capacity, writer);
-  major += num;  // we can store the num as additional value 
+  major += num;  // we can store the num as additional value
   writer->cbor[writer->pt] = major;
   writer->pt++;
 }
 
 void cbor_write_item_with_constant_val_length_4(struct cbor_writer *writer, uint8_t major, uint64_t num)
 {
-// this is only for headers which should be constantly long. 
+// this is only for headers which should be constantly long.
   major = major<<5;
   check_memory(writer, 10);
   major += 0x1a; // reserving those bytes
