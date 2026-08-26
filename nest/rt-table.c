@@ -2086,7 +2086,7 @@ rte_announce_all(struct rtable_private *tab, const struct netindex *i UNUSED, ne
 }
 
 static struct rt_pending_export *
-rte_announce_best(struct rtable_private *tab, const struct netindex *i UNUSED, net *net,
+rte_announce_best(rtable *tab, const struct netindex *i UNUSED, net *net,
 	     const rte *new_best, const rte *old_best)
 {
   /* Update network count */
@@ -2104,9 +2104,10 @@ rte_announce_best(struct rtable_private *tab, const struct netindex *i UNUSED, n
   struct rt_pending_export *best_rpe = NULL;
 
   /* The last net needs to be announced anyway so we could release export_all. */
-  if (new_best != old_best)
-    best_rpe = rte_announce_to(&tab->export_best, &net->best,
-	new_best_valid ? new_best : NULL, old_best_valid ? old_best : NULL);
+  RT_LOCKED(tab, table)
+    if (new_best != old_best)
+      best_rpe = rte_announce_to(&tab->export_best, &net->best,
+	  new_best_valid ? new_best : NULL, old_best_valid ? old_best : NULL);
 
   if (best_rpe)
   {
@@ -2368,7 +2369,7 @@ rte_better(const rte ** best_rte_preselection, const rte *new, const rte *old)
 }
 
 const rte *
-rte_select_best(struct rtable_private *table, net *nn)
+rte_select_best(struct rte_storage **rte_for_selection, uint count)
 {
   /* Field used for preselection of the best route.
   * We can not allways determine the best route
@@ -2381,14 +2382,15 @@ rte_select_best(struct rtable_private *table, net *nn)
   const rte *old = NULL;
   const rte **new_field;
 
-  NET_WALK_ROUTES(table, nn, ep, e)
+  for (size_t i = 0; i < count; i++)
   {
-    switch (rte_better(best_rte_preselection, &e->rte, old))
+    const rte *e = &rte_for_selection[i]->rte;
+    switch (rte_better(best_rte_preselection, e, old))
     {
       case NEW_RTE_BETTER:
         /* No matter how many routes we have preselected, this one is better than all of them. */
-        best_rte_preselection[0] = &e->rte;
-        old = &e->rte;
+        best_rte_preselection[0] = e;
+        old = e;
         idx = 1;
         break;
       case CANT_CHOOSE_BETTER:
@@ -2402,7 +2404,7 @@ rte_select_best(struct rtable_private *table, net *nn)
           best_rte_preselection = new_field;
         }
 
-        best_rte_preselection[idx] = &e->rte;
+        best_rte_preselection[idx] = e;
         idx++;
         break;
       case OLD_RTE_BETTER:
@@ -2413,7 +2415,7 @@ rte_select_best(struct rtable_private *table, net *nn)
 
   if (idx <= 1)
   {
-    if (!rte_is_valid(best_rte_preselection[0]))
+    if (idx == 0 || !rte_is_valid(best_rte_preselection[0]))
       return NULL;
     /* One preselected rte - it must be the best */
     return best_rte_preselection[0];
@@ -2605,12 +2607,39 @@ rte_replace(struct rtable_private *table, struct rt_import_hook *c, struct netin
 }
 
 static struct rt_pending_export *
-rte_recalculate_best_for_net(struct rtable_private *table, net *nets, const struct netindex *ni)
+rte_recalculate_best_for_net(rtable *table, net *nets, const struct netindex *ni)
 {
   net *nn = &nets[ni->index];
 
   const rte *old_best = NET_BEST_ROUTE(nn);
-  const rte *best = rte_select_best(table, nn);
+
+
+  /* New routes are added only to the beginning of the linked list (or they just swap with their old version.)
+   * Not counting with a route newer than this function call is no big deal, because we will be called again.
+   * The problem is ommiting older but not yeat old routes from the end of the linked list
+   * and resizing the field too often.
+   */
+
+  /* Count routes */
+  rcu_read_lock();
+  struct rte_storage *first_rte = atomic_load_explicit(&nn->routes, memory_order_relaxed);
+  uint count = 0;
+  for (struct rte_storage *r = first_rte; r; r = atomic_load_explicit(&r->next, memory_order_acquire))
+    count++;
+
+  /* An store them */
+  struct rte_storage **rte_for_selection = tmp_alloc(count * sizeof(struct rte_storage *));
+  uint stored_count = 0;
+  for (struct rte_storage *r = first_rte; r; r = atomic_load_explicit(&r->next, memory_order_acquire))
+  {
+    ASSERT_DIE(stored_count < count);
+    rte_for_selection[stored_count] = r;
+    stored_count++;
+  }
+  rcu_read_unlock();
+
+  /* This is the ugly part.the tab is locked*/
+  const rte *best = rte_select_best(rte_for_selection, stored_count);
 
 #if 0
   if (table->config->sorted)
@@ -2660,7 +2689,7 @@ rte_recalculate_best_for_net(struct rtable_private *table, net *nets, const stru
 static void
 rte_recalculate_best(void *t_)
 {
-  RT_LOCK((rtable *) t_, table);
+  rtable *table = (rtable *)t_;
 
   if (!table->all_req_valid)
     return;
@@ -2668,7 +2697,7 @@ rte_recalculate_best(void *t_)
   net *nets = atomic_load_explicit(&table->routes, memory_order_acquire);
 
   struct bmap seq_map;
-  bmap_init(&seq_map, table->rp, 16);
+  bmap_init(&seq_map, birdloop_pool(table->loop), 16);
 
   struct rt_pending_export *rpe_last = NULL;
 
@@ -4012,7 +4041,7 @@ What is this about:
 
   t->all_req = (struct lfjour_recipient) {
     .event = ev_new_init(p, rte_recalculate_best, t),
-    .target = &global_event_list,
+    .target = birdloop_event_list(t->loop),
   };
 
   lfjour_register(&t->export_all.journal, &t->all_req);
