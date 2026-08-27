@@ -177,6 +177,24 @@ val_compare(const struct f_val *v1, const struct f_val *v2)
   return cls->compare(v1, v2);
 }
 
+/**
+ * val_hash - hash a value
+ * @v: value
+ * @seed: seed
+ *
+ * Mixes a hash of the given value into the given seed, returns updated seed.
+ */
+u64
+val_hash(u64 seed, const struct f_val *v)
+{
+  const struct f_class *cls = f_type_get_class(v->type);
+  if (!cls || !cls->hash)
+    bug("Tried to hash a value of type %u (%s) which was never expected to be hashed", v->type, cls ? cls->name ?: "no name" : "unknown");
+
+  return cls->hash(seed, v);
+}
+
+
 static inline int
 bs_same(const struct adata *bs1, const struct adata *bs2)
 {

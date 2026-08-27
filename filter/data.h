@@ -242,6 +242,7 @@ struct sym_scope *f_type_method_scope(enum f_type t);
 
 bool val_same(const struct f_val *v1, const struct f_val *v2);
 int val_compare(const struct f_val *v1, const struct f_val *v2);
+u64 val_hash(u64 seed, const struct f_val *v);
 void val_format(const struct f_val *v, buffer *buf);
 char *val_format_str(struct linpool *lp, const struct f_val *v);
 const char *val_dump(const struct f_val *v);

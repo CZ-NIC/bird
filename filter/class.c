@@ -1,11 +1,10 @@
 /*
  *	Filters: Data classes
  *
- *	(c) 1998 Pavel Machek <pavel@ucw.cz>
- *	(c) 2019 Maria Matejka <mq@jmq.cz>
+ *	(c) 1998       Pavel Machek <pavel@ucw.cz>
+ *	(c) 2019--2026 Maria Matejka <mq@jmq.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
- *
  */
 
 //#define PARSER 1
@@ -32,6 +31,7 @@
 
 SUBLAMBDA(COMPARE, int, F_CLASS_COMPARE);
 SUBLAMBDA(SAME, bool, F_CLASS_COMPARE);
+SUBLAMBDA(HASHVAL, u64, F_CLASS_HASH);
 
 #ifdef M4_AUTO
 /*
@@ -94,6 +94,7 @@ H_CLASS();
 
 /* Standard class operations */
 #define F_CLASS_COMPARE			const struct f_val *v1, const struct f_val *v2
+#define F_CLASS_HASH			u64 seed, const struct f_val *v
 
 struct f_class {
   enum f_type id;			/* T_* for static types */
@@ -107,6 +108,7 @@ struct f_class {
   int (*compare)(F_CLASS_COMPARE);	/* Return 1 if v1 > v2, -1 if v1 < v2, 0 otherwise */
   bool (*same)(F_CLASS_COMPARE);	/* Return true if v1 == v2, false otherwise
 					   All classes must have either &compare or &same. */
+  u64 (*hash)(F_CLASS_HASH);		/* Mix in a hash value */
 };
 
 AUX_MUTE();
@@ -133,6 +135,7 @@ int t_types_consistency(void)
 
 /* Actually use the ID */
 m4_define(FC_ID,[[
+m4_define([[THIS_CLASS_VAL]],v_$1)
 H_ENUM()  $1,
 H_VAL_UNION()    THIS_CLASS_TYPE() v_$1;
 C_BASE_TYPES  [$1] = &THIS_CLASS_NAME,
@@ -148,6 +151,10 @@ C_CONSISTENCY()
 AUX_MUTE()
 ]]);
 
+m4_define(VAL,[[v->val.THIS_CLASS_VAL()]])
+m4_define(VAL1,[[v1->val.THIS_CLASS_VAL()]])
+m4_define(VAL2,[[v2->val.THIS_CLASS_VAL()]])
+
 #else
 #define FC_SN(x)	x
 #define FC_ID(x)	.id = x
@@ -158,11 +165,16 @@ static bool
 void_same(const struct f_val *v1 UNUSED, const struct f_val *v2 UNUSED)
 { return true; }
 
+static u64
+void_hash(u64 seed, const struct f_val *v UNUSED)
+{ return seed; }
+
 static const struct f_class FC_SN(f_type_void) = {
   FC_TYPE(int),
   FC_ID(T_VOID),
   .name = "void",
   .same = &void_same,
+  .hash = &void_hash,
 };
 
 static const struct f_class FC_SN(f_type_none) = {
@@ -179,7 +191,8 @@ static const struct f_class FC_SN(f_type_int) = {
   .legacy_kw = true,
   .name = "int",
   .pretty_name = "Integer",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_bool) = {
@@ -187,7 +200,8 @@ static const struct f_class FC_SN(f_type_bool) = {
   FC_ID(T_BOOL),
   .legacy_kw = true,
   .name = "bool",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_pair) = {
@@ -195,7 +209,8 @@ static const struct f_class FC_SN(f_type_pair) = {
   FC_ID(T_PAIR),
   .legacy_kw = true,
   .name = "pair",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_quad) = {
@@ -204,7 +219,8 @@ static const struct f_class FC_SN(f_type_quad) = {
   .ea_type = EAF_TYPE_ROUTER_ID,
   .legacy_kw = true,
   .name = "quad",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_lo) = {
@@ -218,84 +234,96 @@ static const struct f_class FC_SN(f_type_enum_rts) = {
   FC_TYPE(int),
   FC_ID(T_ENUM_RTS),
   .name = "enum rts",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_bgp_origin) = {
   FC_TYPE(int),
   FC_ID(T_ENUM_BGP_ORIGIN),
   .name = "enum bgp_origin",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_scope) = {
   FC_TYPE(int),
   FC_ID(T_ENUM_SCOPE),
   .name = "enum scope",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_rtd) = {
   FC_TYPE(int),
   FC_ID(T_ENUM_RTD),
   .name = "enum rtd",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_roa) = {
   FC_TYPE(int),
   FC_ID(T_ENUM_ROA),
   .name = "enum roa",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_aspa) = {
   FC_TYPE(int),
   FC_ID(T_ENUM_ASPA),
   .name = "enum aspa",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_net_type) = {
   FC_TYPE(int),
   FC_ID(T_ENUM_NET_TYPE),
   .name = "enum net_type",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_ra_preference) = {
   FC_TYPE(int),
   FC_ID(T_ENUM_RA_PREFERENCE),
   .name = "enum ra_preference",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_af) = {
   FC_TYPE(int),
   FC_ID(T_ENUM_AF),
   .name = "enum af",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_mpls_policy) = {
   FC_TYPE(int),
   FC_ID(T_ENUM_MPLS_POLICY),
   .name = "enum mpls_policy",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_net_evpn_type) = {
   FC_TYPE(int),
   FC_ID(T_ENUM_NET_EVPN_TYPE),
   .name = "enum net_evpn_type",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_kbr_source) = {
   FC_TYPE(int),
   FC_ID(T_ENUM_KBR_SOURCE),
   .name = "enum kbr_source",
-  .compare = COMPARE(uint_cmp(v1->val.i, v2->val.i)),
+  .compare = COMPARE(uint_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_empty) = {
@@ -304,6 +332,7 @@ static const struct f_class FC_SN(f_type_enum_empty) = {
   .hidden = true,
   .name = "enum __empty",
   .same = &void_same,
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_enum_hi) = {
@@ -320,7 +349,8 @@ static const struct f_class FC_SN(f_type_ip) = {
   .legacy_kw = true,
   .name = "ip",
   .pretty_name = "IP address",
-  .compare = COMPARE(ipa_compare(v1->val.ip, v2->val.ip)),
+  .compare = COMPARE(ipa_compare(VAL1, VAL2)),
+  .hash = HASHVAL(mem_hash_mix(&seed, &VAL, sizeof VAL), seed),
 };
 
 static const struct f_class FC_SN(f_type_prefix) = {
@@ -328,15 +358,9 @@ static const struct f_class FC_SN(f_type_prefix) = {
   FC_ID(T_NET),
   .legacy_kw = true,
   .name = "prefix",
-  .compare = COMPARE(net_compare(v1->val.net, v2->val.net)),
+  .compare = COMPARE(net_compare(VAL1, VAL2)),
+  .hash = HASHVAL(mem_hash_mix_num(&seed, net_hash(VAL)), seed),
 };
-
-static int
-f_string_compare(F_CLASS_COMPARE)
-{
-  int i = strcmp(v1->val.s, v2->val.s);
-  return (i > 0) - (i < 0);
-}
 
 static const struct f_class FC_SN(f_type_string) = {
   FC_TYPE(const char *),
@@ -345,7 +369,8 @@ static const struct f_class FC_SN(f_type_string) = {
   .legacy_kw = true,
   .name = "string",
   .pretty_name = "String",
-  .compare = f_string_compare,
+  .compare = COMPARE(({ int i = strcmp(VAL1, VAL2); (i > 0) - (i < 0); })),
+  .hash = HASHVAL(mem_hash_mix_str(&seed, VAL), seed),
 };
 
 static const struct f_class FC_SN(f_type_bytestring) = {
@@ -355,7 +380,8 @@ static const struct f_class FC_SN(f_type_bytestring) = {
   .legacy_kw = true,
   .name = "bytestring",
   .pretty_name = "Bytestring",
-  .compare = COMPARE(bytestring_compare(v1->val.ad, v2->val.ad)),
+  .compare = COMPARE(bytestring_compare(VAL1, VAL2)),
+  .hash = HASHVAL(mem_hash_mix(&seed, VAL->data, VAL->length), seed),
 };
 
 static const struct f_class FC_SN(f_type_bgpmask) = {
@@ -363,7 +389,8 @@ static const struct f_class FC_SN(f_type_bgpmask) = {
   FC_ID(T_PATH_MASK),
   .legacy_kw = true,
   .name = "bgpmask",
-  .same = SAME(pm_same(v1->val.path_mask, v2->val.path_mask)),
+  .same = SAME(pm_same(VAL1, VAL2)),
+  .hash = HASHVAL(mem_hash_mix(&seed, VAL, sizeof *VAL + VAL->len * sizeof *VAL->item), seed),
 };
 
 static const struct f_class FC_SN(f_type_bgpmask_item) = {
@@ -371,7 +398,7 @@ static const struct f_class FC_SN(f_type_bgpmask_item) = {
   FC_ID(T_PATH_MASK_ITEM),
   .hidden = true,
   .name = "bgpmask_item",
-  .same = SAME(pmi_same(&(v1->val.pmi), &(v2->val.pmi))),
+  .same = SAME(pmi_same(&(VAL1), &(VAL2))),
 };
 
 static const struct f_class FC_SN(f_type_bgppath) = {
@@ -381,7 +408,8 @@ static const struct f_class FC_SN(f_type_bgppath) = {
   .legacy_kw = true,
   .name = "bgppath",
   .empty = { .type = T_PATH, .val.ad = &null_adata },
-  .compare = COMPARE(as_path_compare(v1->val.ad, v2->val.ad)),
+  .compare = COMPARE(as_path_compare(VAL1, VAL2)),
+  .hash = HASHVAL(mem_hash_mix(&seed, VAL->data, VAL->length), seed),
 };
 
 static const struct f_class FC_SN(f_type_clist) = {
@@ -391,7 +419,8 @@ static const struct f_class FC_SN(f_type_clist) = {
   .legacy_kw = true,
   .name = "clist",
   .empty = { .type = T_CLIST, .val.ad = &null_adata },
-  .same = SAME(adata_same(v1->val.ad, v2->val.ad)),
+  .same = SAME(adata_same(VAL1, VAL2)),
+  .hash = HASHVAL(mem_hash_mix(&seed, VAL->data, VAL->length), seed),
 };
 
 static const struct f_class FC_SN(f_type_ec) = {
@@ -399,7 +428,8 @@ static const struct f_class FC_SN(f_type_ec) = {
   FC_ID(T_EC),
   .legacy_kw = true,
   .name = "ec",
-  .compare = COMPARE(u64_cmp(v1->val.ec, v2->val.ec)),
+  .compare = COMPARE(u64_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_eclist) = {
@@ -409,7 +439,8 @@ static const struct f_class FC_SN(f_type_eclist) = {
   .legacy_kw = true,
   .name = "eclist",
   .empty = { .type = T_ECLIST, .val.ad = &null_adata },
-  .same = SAME(adata_same(v1->val.ad, v2->val.ad)),
+  .same = SAME(adata_same(VAL1, VAL2)),
+  .hash = HASHVAL(mem_hash_mix(&seed, VAL->data, VAL->length), seed),
 };
 
 static const struct f_class FC_SN(f_type_lc) = {
@@ -417,7 +448,8 @@ static const struct f_class FC_SN(f_type_lc) = {
   FC_ID(T_LC),
   .legacy_kw = true,
   .name = "lc",
-  .compare = COMPARE(lcomm_cmp(v1->val.lc, v2->val.lc)),
+  .compare = COMPARE(lcomm_cmp(VAL1, VAL2)),
+  .hash = HASHVAL(u32_hash0(VAL.asn, HASH_PARAM, u32_hash0(VAL.ldp1, HASH_PARAM, u32_hash0(VAL.ldp2, HASH_PARAM, seed)))),
 };
 
 static const struct f_class FC_SN(f_type_lclist) = {
@@ -427,7 +459,8 @@ static const struct f_class FC_SN(f_type_lclist) = {
   .legacy_kw = true,
   .name = "lclist",
   .empty = { .type = T_LCLIST, .val.ad = &null_adata },
-  .same = SAME(adata_same(v1->val.ad, v2->val.ad)),
+  .same = SAME(adata_same(VAL1, VAL2)),
+  .hash = HASHVAL(mem_hash_mix(&seed, VAL->data, VAL->length), seed),
 };
 
 static const struct f_class FC_SN(f_type_rd) = {
@@ -435,7 +468,8 @@ static const struct f_class FC_SN(f_type_rd) = {
   FC_ID(T_RD),
   .legacy_kw = true,
   .name = "rd",
-  .compare = COMPARE(u64_cmp(v1->val.ec, v2->val.ec)),
+  .compare = COMPARE(rd_compare(VAL1, VAL2)),
+  .hash = HASHVAL(rd_hash0(VAL, HASH_PARAM, seed)),
 };
 
 static const struct f_class FC_SN(f_type_mac) = {
@@ -443,7 +477,8 @@ static const struct f_class FC_SN(f_type_mac) = {
   FC_ID(T_MAC),
   .legacy_kw = true,
   .name = "mac",
-  .compare = COMPARE(mac_compare(v1->val.mac, v2->val.mac)),
+  .compare = COMPARE(mac_compare(VAL1, VAL2)),
+  .hash = HASHVAL(mem_hash_mix(&seed, &VAL, sizeof VAL), seed),
 };
 
 static const struct f_class FC_SN(f_type_route) = {
@@ -452,14 +487,14 @@ static const struct f_class FC_SN(f_type_route) = {
   .legacy_kw = true,
   .name = "route",
   .empty = { .type = T_ROUTE, },
-  .same = SAME(v1->val.rte == v2->val.rte),
+  .same = SAME(VAL1 == VAL2),
 };
 
 static const struct f_class FC_SN(f_type_routes) = {
   FC_TYPE(struct rte *),
   FC_ID(T_ROUTES_BLOCK),
   .name = "routes",
-  .same = SAME(v1->val.rte == v2->val.rte),
+  .same = SAME(VAL1 == VAL2),
 };
 
 #include "filter/class-m4-auto-post.c"
