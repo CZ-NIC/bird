@@ -547,6 +547,9 @@ static inline vpn_rd net_rd(const net_addr *a)
   return RD_NONE;
 }
 
+static inline vpn_rt net_rtc(const net_addr *a)
+{ return (a->type == NET_RTC) ? ((net_addr_rtc *)a)->rt : VPN_RT_NONE; }
+
 static inline uint net_evpn_data_length(const net_addr_evpn *a)
 { return a->length - NET_EVPN_HDR_LENGTH; }
 
