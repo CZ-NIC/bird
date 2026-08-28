@@ -32,6 +32,7 @@
 SUBLAMBDA(COMPARE, int, F_CLASS_COMPARE);
 SUBLAMBDA(SAME, bool, F_CLASS_COMPARE);
 SUBLAMBDA(HASHVAL, u64, F_CLASS_HASH);
+SUBLAMBDA(FORMAT, void, F_CLASS_FORMAT);
 
 #ifdef M4_AUTO
 /*
@@ -95,6 +96,7 @@ H_CLASS();
 /* Standard class operations */
 #define F_CLASS_COMPARE			const struct f_val *v1, const struct f_val *v2
 #define F_CLASS_HASH			u64 seed, const struct f_val *v
+#define F_CLASS_FORMAT			const struct f_val *v, buffer *buf
 
 struct f_class {
   enum f_type id;			/* T_* for static types */
@@ -109,6 +111,7 @@ struct f_class {
   bool (*same)(F_CLASS_COMPARE);	/* Return true if v1 == v2, false otherwise
 					   All classes must have either &compare or &same. */
   u64 (*hash)(F_CLASS_HASH);		/* Mix in a hash value */
+  void (*format)(F_CLASS_FORMAT);	/* Format to a string */
 };
 
 AUX_MUTE();
@@ -169,12 +172,17 @@ static u64
 void_hash(u64 seed, const struct f_val *v UNUSED)
 { return seed; }
 
+static void
+void_format(const struct f_val *v UNUSED, buffer *buf)
+{ buffer_puts(buf, "(void)"); }
+
 static const struct f_class FC_SN(f_type_void) = {
   FC_TYPE(int),
   FC_ID(T_VOID),
   .name = "void",
   .same = &void_same,
   .hash = &void_hash,
+  .format = &void_format,
 };
 
 static const struct f_class FC_SN(f_type_none) = {
@@ -193,6 +201,7 @@ static const struct f_class FC_SN(f_type_int) = {
   .pretty_name = "Integer",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "%u", VAL)),
 };
 
 static const struct f_class FC_SN(f_type_bool) = {
@@ -202,6 +211,7 @@ static const struct f_class FC_SN(f_type_bool) = {
   .name = "bool",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT(buffer_puts(buf, VAL ? "TRUE" : "FALSE")),
 };
 
 static const struct f_class FC_SN(f_type_pair) = {
@@ -211,6 +221,7 @@ static const struct f_class FC_SN(f_type_pair) = {
   .name = "pair",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(%u,%u)", VAL >> 16, VAL & 0xffff)),
 };
 
 static const struct f_class FC_SN(f_type_quad) = {
@@ -221,6 +232,7 @@ static const struct f_class FC_SN(f_type_quad) = {
   .name = "quad",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "%R", VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_lo) = {
@@ -236,6 +248,7 @@ static const struct f_class FC_SN(f_type_enum_rts) = {
   .name = "enum rts",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_bgp_origin) = {
@@ -244,6 +257,7 @@ static const struct f_class FC_SN(f_type_enum_bgp_origin) = {
   .name = "enum bgp_origin",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_scope) = {
@@ -252,6 +266,7 @@ static const struct f_class FC_SN(f_type_enum_scope) = {
   .name = "enum scope",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_rtd) = {
@@ -260,6 +275,7 @@ static const struct f_class FC_SN(f_type_enum_rtd) = {
   .name = "enum rtd",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_roa) = {
@@ -268,6 +284,7 @@ static const struct f_class FC_SN(f_type_enum_roa) = {
   .name = "enum roa",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_aspa) = {
@@ -276,6 +293,7 @@ static const struct f_class FC_SN(f_type_enum_aspa) = {
   .name = "enum aspa",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_net_type) = {
@@ -284,6 +302,7 @@ static const struct f_class FC_SN(f_type_enum_net_type) = {
   .name = "enum net_type",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_ra_preference) = {
@@ -292,6 +311,7 @@ static const struct f_class FC_SN(f_type_enum_ra_preference) = {
   .name = "enum ra_preference",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_af) = {
@@ -300,6 +320,7 @@ static const struct f_class FC_SN(f_type_enum_af) = {
   .name = "enum af",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_mpls_policy) = {
@@ -308,6 +329,7 @@ static const struct f_class FC_SN(f_type_enum_mpls_policy) = {
   .name = "enum mpls_policy",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_net_evpn_type) = {
@@ -316,6 +338,7 @@ static const struct f_class FC_SN(f_type_enum_net_evpn_type) = {
   .name = "enum net_evpn_type",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_kbr_source) = {
@@ -324,6 +347,7 @@ static const struct f_class FC_SN(f_type_enum_kbr_source) = {
   .name = "enum kbr_source",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_empty) = {
@@ -333,6 +357,7 @@ static const struct f_class FC_SN(f_type_enum_empty) = {
   .name = "enum __empty",
   .same = &void_same,
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT((void) buffer_print(buf, "(enum %x)%u", v->type, VAL)),
 };
 
 static const struct f_class FC_SN(f_type_enum_hi) = {
@@ -351,6 +376,7 @@ static const struct f_class FC_SN(f_type_ip) = {
   .pretty_name = "IP address",
   .compare = COMPARE(ipa_compare(VAL1, VAL2)),
   .hash = HASHVAL(mem_hash_mix(&seed, &VAL, sizeof VAL), seed),
+  .format = FORMAT((void) buffer_print(buf, "%I", VAL)),
 };
 
 static const struct f_class FC_SN(f_type_prefix) = {
@@ -360,6 +386,7 @@ static const struct f_class FC_SN(f_type_prefix) = {
   .name = "prefix",
   .compare = COMPARE(net_compare(VAL1, VAL2)),
   .hash = HASHVAL(mem_hash_mix_num(&seed, net_hash(VAL)), seed),
+  .format = FORMAT((void) buffer_print(buf, "%N", VAL)),
 };
 
 static const struct f_class FC_SN(f_type_string) = {
@@ -371,6 +398,7 @@ static const struct f_class FC_SN(f_type_string) = {
   .pretty_name = "String",
   .compare = COMPARE(({ int i = strcmp(VAL1, VAL2); (i > 0) - (i < 0); })),
   .hash = HASHVAL(mem_hash_mix_str(&seed, VAL), seed),
+  .format = FORMAT((void) buffer_print(buf, "%s", VAL)),
 };
 
 static const struct f_class FC_SN(f_type_bytestring) = {
@@ -382,6 +410,7 @@ static const struct f_class FC_SN(f_type_bytestring) = {
   .pretty_name = "Bytestring",
   .compare = COMPARE(bytestring_compare(VAL1, VAL2)),
   .hash = HASHVAL(mem_hash_mix(&seed, VAL->data, VAL->length), seed),
+  .format = FORMAT(({ char buf2[1024]; bstrbintohex(VAL->data, VAL->length, buf2, 1000, ':'); (void) buffer_print(buf, "%s", buf2); })),
 };
 
 static const struct f_class FC_SN(f_type_bgpmask) = {
@@ -391,6 +420,7 @@ static const struct f_class FC_SN(f_type_bgpmask) = {
   .name = "bgpmask",
   .same = SAME(pm_same(VAL1, VAL2)),
   .hash = HASHVAL(mem_hash_mix(&seed, VAL, sizeof *VAL + VAL->len * sizeof *VAL->item), seed),
+  .format = FORMAT(pm_format(VAL, buf)),
 };
 
 static const struct f_class FC_SN(f_type_bgpmask_item) = {
@@ -410,6 +440,7 @@ static const struct f_class FC_SN(f_type_bgppath) = {
   .empty = { .type = T_PATH, .val.ad = &null_adata },
   .compare = COMPARE(as_path_compare(VAL1, VAL2)),
   .hash = HASHVAL(mem_hash_mix(&seed, VAL->data, VAL->length), seed),
+  .format = FORMAT(({ char buf2[1024]; as_path_format(VAL, buf2, 1000); (void) buffer_print(buf, "(path %s)", buf2); })),
 };
 
 static const struct f_class FC_SN(f_type_clist) = {
@@ -421,6 +452,7 @@ static const struct f_class FC_SN(f_type_clist) = {
   .empty = { .type = T_CLIST, .val.ad = &null_adata },
   .same = SAME(adata_same(VAL1, VAL2)),
   .hash = HASHVAL(mem_hash_mix(&seed, VAL->data, VAL->length), seed),
+  .format = FORMAT(({ char buf2[1024]; int_set_format(VAL, 1, -1, buf2, 1000); (void) buffer_print(buf, "(clist %s)", buf2); })),
 };
 
 static const struct f_class FC_SN(f_type_ec) = {
@@ -430,6 +462,7 @@ static const struct f_class FC_SN(f_type_ec) = {
   .name = "ec",
   .compare = COMPARE(u64_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u64_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT(({ char buf2[1024]; ec_format(buf2, VAL); (void) buffer_print(buf, "%s", buf2); })),
 };
 
 static const struct f_class FC_SN(f_type_eclist) = {
@@ -441,6 +474,7 @@ static const struct f_class FC_SN(f_type_eclist) = {
   .empty = { .type = T_ECLIST, .val.ad = &null_adata },
   .same = SAME(adata_same(VAL1, VAL2)),
   .hash = HASHVAL(mem_hash_mix(&seed, VAL->data, VAL->length), seed),
+  .format = FORMAT(({ char buf2[1024]; ec_set_format(v->val.ad, -1, buf2, 1000); (void) buffer_print(buf, "(eclist %s)", buf2); })),
 };
 
 static const struct f_class FC_SN(f_type_lc) = {
@@ -450,6 +484,7 @@ static const struct f_class FC_SN(f_type_lc) = {
   .name = "lc",
   .compare = COMPARE(lcomm_cmp(VAL1, VAL2)),
   .hash = HASHVAL(u32_hash0(VAL.asn, HASH_PARAM, u32_hash0(VAL.ldp1, HASH_PARAM, u32_hash0(VAL.ldp2, HASH_PARAM, seed)))),
+  .format = FORMAT(({ char buf2[1024]; lc_format(buf2, VAL); (void) buffer_print(buf, "%s", buf2); })),
 };
 
 static const struct f_class FC_SN(f_type_lclist) = {
@@ -461,6 +496,7 @@ static const struct f_class FC_SN(f_type_lclist) = {
   .empty = { .type = T_LCLIST, .val.ad = &null_adata },
   .same = SAME(adata_same(VAL1, VAL2)),
   .hash = HASHVAL(mem_hash_mix(&seed, VAL->data, VAL->length), seed),
+  .format = FORMAT(({ char buf2[1024]; lc_set_format(v->val.ad, -1, buf2, 1000); (void) buffer_print(buf, "(lclist %s)", buf2); })),
 };
 
 static const struct f_class FC_SN(f_type_rd) = {
@@ -470,6 +506,7 @@ static const struct f_class FC_SN(f_type_rd) = {
   .name = "rd",
   .compare = COMPARE(rd_compare(VAL1, VAL2)),
   .hash = HASHVAL(rd_hash0(VAL, HASH_PARAM, seed)),
+  .format = FORMAT(({ char buf2[1024]; rd_format(v->val.rd, buf2, 1024); (void) buffer_print(buf, "%s", buf2); })),
 };
 
 static const struct f_class FC_SN(f_type_mac) = {
@@ -479,6 +516,7 @@ static const struct f_class FC_SN(f_type_mac) = {
   .name = "mac",
   .compare = COMPARE(mac_compare(VAL1, VAL2)),
   .hash = HASHVAL(mem_hash_mix(&seed, &VAL, sizeof VAL), seed),
+  .format = FORMAT((void) buffer_print(buf, "%6b", v->val.mac.addr)),
 };
 
 static const struct f_class FC_SN(f_type_route) = {
@@ -488,6 +526,7 @@ static const struct f_class FC_SN(f_type_route) = {
   .name = "route",
   .empty = { .type = T_ROUTE, },
   .same = SAME(VAL1 == VAL2),
+  .format = FORMAT(rte_format(v->val.rte, buf)),
 };
 
 static const struct f_class FC_SN(f_type_routes) = {
@@ -495,6 +534,7 @@ static const struct f_class FC_SN(f_type_routes) = {
   FC_ID(T_ROUTES_BLOCK),
   .name = "routes",
   .same = SAME(VAL1 == VAL2),
+  .format = FORMAT(rte_block_format(v->val.rte, buf)),
 };
 
 #include "filter/class-m4-auto-post.c"

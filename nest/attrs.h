@@ -87,6 +87,7 @@ struct f_path_mask {
 
 int pm_same(const struct f_path_mask *m1, const struct f_path_mask *m2);
 int pmi_same(const struct f_path_mask_item *mi1, const struct f_path_mask_item *mi2);
+void pm_format(const struct f_path_mask *m, buffer *buf);
 
 int as_path_match(const struct adata *path, const struct f_path_mask *mask);
 

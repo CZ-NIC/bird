@@ -1024,3 +1024,53 @@ pmi_same(const struct f_path_mask_item *mi1, const struct f_path_mask_item *mi2)
   return 1;
 }
 
+void
+pm_format(const struct f_path_mask *p, buffer *buf)
+{
+  int loop = 0;
+
+  buffer_puts(buf, "[= ");
+
+  for (uint i=0; i<p->len; i++)
+  {
+    switch(p->item[i].kind)
+    {
+    case PM_ASN:
+      buffer_print(buf, "%u ", p->item[i].asn);
+      break;
+
+    case PM_QUESTION:
+      buffer_puts(buf, "? ");
+      break;
+
+    case PM_ASTERISK:
+      buffer_puts(buf, "* ");
+      break;
+
+    case PM_LOOP:
+      loop = 1;
+      break;
+
+    case PM_ASN_RANGE:
+      buffer_print(buf, "%u..%u ", p->item[i].from, p->item[i].to);
+      break;
+
+    case PM_ASN_SET:
+      tree_format(p->item[i].set, buf);
+      buffer_puts(buf, " ");
+      break;
+
+    case PM_ASN_EXPR:
+      ASSERT(0);
+    }
+
+    if (loop && (p->item[i].kind != PM_LOOP))
+    {
+      buffer_puts(buf, "+ ");
+      loop = 0;
+    }
+  }
+
+  buffer_puts(buf, "=]");
+}
+

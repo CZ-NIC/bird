@@ -350,6 +350,8 @@ int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, in
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
 int rte_same(rte *x, rte *y);
+void rte_format(const rte *, buffer *);
+void rte_block_format(const rte *, buffer *);
 
 static inline int rt_is_ip(rtable *tab)
 { return (tab->addr_type == NET_IP4) || (tab->addr_type == NET_IP6); }

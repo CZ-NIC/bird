@@ -3772,6 +3772,37 @@ rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
   return he;
 }
 
+/*
+ *  Miscellaneous route-related functions
+ */
+
+void
+rte_format(const struct rte *rte, buffer *buf)
+{
+  if (rte)
+    buffer_print(buf, "Route [%d] to %N from %s.%s via %s",
+                 rte->src->global_id, rte->net->n.addr,
+                 rte->sender->proto->name, rte->sender->name,
+                 rte->src->proto->name);
+  else
+    buffer_puts(buf, "[No route]");
+}
+
+void
+rte_block_format(const struct rte *rte, buffer *buf)
+{
+  buffer_print(buf, "Block of routes:");
+
+  int i = 0;
+  while (rte)
+  {
+    buffer_print(buf, "%s%d: ", i ? "; " : " ", i);
+    rte_format(rte, buf);
+    rte = rte->next;
+    i++;
+  }
+}
+
 
 /*
  *  Documentation for functions declared inline in route.h
