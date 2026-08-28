@@ -472,23 +472,17 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
           if (fret > F_RETURN)
             log(L_WARN "%s.%s: Wrong number of items left on stack after evaluation of aggregation list", rt1->src->proto->name, rt1->sender->name);
 
-	  switch (pos->type) {
-	    case T_VOID:
-	    case T_INT:
-	    case T_BOOL:
-	    case T_PAIR:
-	    case T_QUAD:
-	    case T_ENUM:
-	    case T_IP:
-	    case T_EC:
-	    case T_LC:
-	    case T_RD:
-	      /* Fits, OK */
-	      break;
+	  const struct f_class *cls = f_type_get_class(pos->type);
+	  if (!cls || !cls->name)
+	    log(L_WARN "%s: Aggregator expression %u evaluated to a weird type %u. Please report this situation as a bug.",
+		P->name, val_idx, pos->type);
 
-	    default:
-	      log(L_WARN "%s.%s: Expression evaluated to type %s unsupported by aggregator. Store this value as a custom attribute instead", new->src->proto->name, new->sender->name, f_type_name(pos->type));
-	      *pos = (struct f_val) { .type = T_INT, .val.i = 0 };
+	  if (cls->storage == FCS_LONG)
+	  {
+	    log(L_WARN "%s: Aggregator expression %u evaluated to type %s which is not supported by aggregator. Store this value as a custom attribute instead.",
+		P->name, val_idx, cls->name);
+
+	    *pos = F_VAL(T_INT, 0);
 	  }
 
           break;
