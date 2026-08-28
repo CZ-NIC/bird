@@ -103,7 +103,11 @@ struct f_class {
   byte ea_type;				/* EAF_TYPE_* */
   bool hidden;				/* Inaccessible for users from config */
   bool legacy_kw;			/* Accessed from type_kw in parser */
-  int size;				/* Output of sizeof, aligned to sizeof(int) */
+  enum {
+    FCS_INLINE,				/* What is inside f_val and eattr is complete */
+    FCS_MIXED,				/* Value fits into f_val but not in eattr */
+    FCS_LONG,				/* Value is always stored elsewhere */
+  } storage;
   const char *name;			/* String name */
   const char *pretty_name;		/* More descriptive name */
   struct f_val empty;			/* Default value of uninitialized variables */
@@ -118,7 +122,7 @@ AUX_MUTE();
 
 /* Collect class information at the beginning */
 m4_define(FC_SN,[[m4_define([[THIS_CLASS_NAME]],$1)]]);
-m4_define(FC_TYPE,[[m4_define([[THIS_CLASS_TYPE]],$1)]]);
+m4_define(FC_TYPE,[[m4_define([[THIS_CLASS_TYPE]],$1 m4_ifelse(FCS_LONG,$2,*))]]);
 
 /* Get Type By ID array */
 AUX_SECTION(POSTC, C_BASE_TYPES,[[
@@ -161,7 +165,7 @@ m4_define(VAL2,[[v2->val.THIS_CLASS_VAL()]])
 #else
 #define FC_SN(x)	x
 #define FC_ID(x)	.id = x
-#define FC_TYPE(x)	.size = sizeof(x)
+#define FC_TYPE(x, s)	.storage = s
 #endif
 
 static bool
@@ -177,7 +181,7 @@ void_format(const struct f_val *v UNUSED, buffer *buf)
 { buffer_puts(buf, "(void)"); }
 
 static const struct f_class FC_SN(f_type_void) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_VOID),
   .name = "void",
   .same = &void_same,
@@ -186,14 +190,14 @@ static const struct f_class FC_SN(f_type_void) = {
 };
 
 static const struct f_class FC_SN(f_type_none) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_NONE),
   .hidden = true,
   .name = "none",
 };
 
 static const struct f_class FC_SN(f_type_int) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_INT),
   .ea_type = EAF_TYPE_INT,
   .legacy_kw = true,
@@ -205,7 +209,7 @@ static const struct f_class FC_SN(f_type_int) = {
 };
 
 static const struct f_class FC_SN(f_type_bool) = {
-  FC_TYPE(bool),
+  FC_TYPE(bool, FCS_INLINE),
   FC_ID(T_BOOL),
   .legacy_kw = true,
   .name = "bool",
@@ -215,7 +219,7 @@ static const struct f_class FC_SN(f_type_bool) = {
 };
 
 static const struct f_class FC_SN(f_type_pair) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_PAIR),
   .legacy_kw = true,
   .name = "pair",
@@ -225,7 +229,7 @@ static const struct f_class FC_SN(f_type_pair) = {
 };
 
 static const struct f_class FC_SN(f_type_quad) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_QUAD),
   .ea_type = EAF_TYPE_ROUTER_ID,
   .legacy_kw = true,
@@ -236,14 +240,14 @@ static const struct f_class FC_SN(f_type_quad) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_lo) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_LO),
   .hidden = true,
   .name = "enum __lo",
 };
 
 static const struct f_class FC_SN(f_type_enum_rts) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_RTS),
   .name = "enum rts",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
@@ -252,7 +256,7 @@ static const struct f_class FC_SN(f_type_enum_rts) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_bgp_origin) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_BGP_ORIGIN),
   .name = "enum bgp_origin",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
@@ -261,7 +265,7 @@ static const struct f_class FC_SN(f_type_enum_bgp_origin) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_scope) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_SCOPE),
   .name = "enum scope",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
@@ -270,7 +274,7 @@ static const struct f_class FC_SN(f_type_enum_scope) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_rtd) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_RTD),
   .name = "enum rtd",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
@@ -279,7 +283,7 @@ static const struct f_class FC_SN(f_type_enum_rtd) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_roa) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_ROA),
   .name = "enum roa",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
@@ -288,7 +292,7 @@ static const struct f_class FC_SN(f_type_enum_roa) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_aspa) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_ASPA),
   .name = "enum aspa",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
@@ -297,7 +301,7 @@ static const struct f_class FC_SN(f_type_enum_aspa) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_net_type) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_NET_TYPE),
   .name = "enum net_type",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
@@ -306,7 +310,7 @@ static const struct f_class FC_SN(f_type_enum_net_type) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_ra_preference) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_RA_PREFERENCE),
   .name = "enum ra_preference",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
@@ -315,7 +319,7 @@ static const struct f_class FC_SN(f_type_enum_ra_preference) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_af) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_AF),
   .name = "enum af",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
@@ -324,7 +328,7 @@ static const struct f_class FC_SN(f_type_enum_af) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_mpls_policy) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_MPLS_POLICY),
   .name = "enum mpls_policy",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
@@ -333,7 +337,7 @@ static const struct f_class FC_SN(f_type_enum_mpls_policy) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_net_evpn_type) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_NET_EVPN_TYPE),
   .name = "enum net_evpn_type",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
@@ -342,7 +346,7 @@ static const struct f_class FC_SN(f_type_enum_net_evpn_type) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_kbr_source) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_KBR_SOURCE),
   .name = "enum kbr_source",
   .compare = COMPARE(uint_cmp(VAL1, VAL2)),
@@ -351,7 +355,7 @@ static const struct f_class FC_SN(f_type_enum_kbr_source) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_empty) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_EMPTY),
   .hidden = true,
   .name = "enum __empty",
@@ -361,14 +365,14 @@ static const struct f_class FC_SN(f_type_enum_empty) = {
 };
 
 static const struct f_class FC_SN(f_type_enum_hi) = {
-  FC_TYPE(int),
+  FC_TYPE(int, FCS_INLINE),
   FC_ID(T_ENUM_HI),
   .hidden = true,
   .name = "enum __hi",
 };
 
 static const struct f_class FC_SN(f_type_ip) = {
-  FC_TYPE(ip_addr),
+  FC_TYPE(ip_addr, FCS_MIXED),
   FC_ID(T_IP),
   .ea_type = EAF_TYPE_IP_ADDRESS,
   .legacy_kw = true,
@@ -380,7 +384,7 @@ static const struct f_class FC_SN(f_type_ip) = {
 };
 
 static const struct f_class FC_SN(f_type_prefix) = {
-  FC_TYPE(const net_addr *),
+  FC_TYPE(const net_addr, FCS_LONG),
   FC_ID(T_NET),
   .legacy_kw = true,
   .name = "prefix",
@@ -390,7 +394,7 @@ static const struct f_class FC_SN(f_type_prefix) = {
 };
 
 static const struct f_class FC_SN(f_type_string) = {
-  FC_TYPE(const char *),
+  FC_TYPE(const char, FCS_LONG),
   FC_ID(T_STRING),
   .ea_type = EAF_TYPE_STRING,
   .legacy_kw = true,
@@ -402,7 +406,7 @@ static const struct f_class FC_SN(f_type_string) = {
 };
 
 static const struct f_class FC_SN(f_type_bytestring) = {
-  FC_TYPE(const struct adata *),
+  FC_TYPE(const struct adata, FCS_LONG),
   FC_ID(T_BYTESTRING),
   .ea_type = EAF_TYPE_OPAQUE,
   .legacy_kw = true,
@@ -414,7 +418,7 @@ static const struct f_class FC_SN(f_type_bytestring) = {
 };
 
 static const struct f_class FC_SN(f_type_bgpmask) = {
-  FC_TYPE(const struct f_path_mask *),
+  FC_TYPE(const struct f_path_mask, FCS_LONG),
   FC_ID(T_PATH_MASK),
   .legacy_kw = true,
   .name = "bgpmask",
@@ -424,7 +428,7 @@ static const struct f_class FC_SN(f_type_bgpmask) = {
 };
 
 static const struct f_class FC_SN(f_type_bgpmask_item) = {
-  FC_TYPE(struct f_path_mask_item),
+  FC_TYPE(struct f_path_mask_item, FCS_MIXED),
   FC_ID(T_PATH_MASK_ITEM),
   .hidden = true,
   .name = "bgpmask_item",
@@ -432,7 +436,7 @@ static const struct f_class FC_SN(f_type_bgpmask_item) = {
 };
 
 static const struct f_class FC_SN(f_type_bgppath) = {
-  FC_TYPE(const struct adata *),
+  FC_TYPE(const struct adata, FCS_LONG),
   FC_ID(T_PATH),
   .ea_type = EAF_TYPE_AS_PATH,
   .legacy_kw = true,
@@ -444,7 +448,7 @@ static const struct f_class FC_SN(f_type_bgppath) = {
 };
 
 static const struct f_class FC_SN(f_type_clist) = {
-  FC_TYPE(const struct adata *),
+  FC_TYPE(const struct adata, FCS_LONG),
   FC_ID(T_CLIST),
   .ea_type = EAF_TYPE_INT_SET,
   .legacy_kw = true,
@@ -456,7 +460,7 @@ static const struct f_class FC_SN(f_type_clist) = {
 };
 
 static const struct f_class FC_SN(f_type_ec) = {
-  FC_TYPE(u64),
+  FC_TYPE(u64, FCS_INLINE),
   FC_ID(T_EC),
   .legacy_kw = true,
   .name = "ec",
@@ -466,7 +470,7 @@ static const struct f_class FC_SN(f_type_ec) = {
 };
 
 static const struct f_class FC_SN(f_type_eclist) = {
-  FC_TYPE(const struct adata *),
+  FC_TYPE(const struct adata, FCS_LONG),
   FC_ID(T_ECLIST),
   .ea_type = EAF_TYPE_EC_SET,
   .legacy_kw = true,
@@ -478,7 +482,7 @@ static const struct f_class FC_SN(f_type_eclist) = {
 };
 
 static const struct f_class FC_SN(f_type_lc) = {
-  FC_TYPE(lcomm),
+  FC_TYPE(lcomm, FCS_MIXED),
   FC_ID(T_LC),
   .legacy_kw = true,
   .name = "lc",
@@ -488,7 +492,7 @@ static const struct f_class FC_SN(f_type_lc) = {
 };
 
 static const struct f_class FC_SN(f_type_lclist) = {
-  FC_TYPE(const struct adata *),
+  FC_TYPE(const struct adata, FCS_LONG),
   FC_ID(T_LCLIST),
   .ea_type = EAF_TYPE_LC_SET,
   .legacy_kw = true,
@@ -500,7 +504,7 @@ static const struct f_class FC_SN(f_type_lclist) = {
 };
 
 static const struct f_class FC_SN(f_type_rd) = {
-  FC_TYPE(vpn_rd),
+  FC_TYPE(vpn_rd, FCS_INLINE),
   FC_ID(T_RD),
   .legacy_kw = true,
   .name = "rd",
@@ -510,7 +514,7 @@ static const struct f_class FC_SN(f_type_rd) = {
 };
 
 static const struct f_class FC_SN(f_type_mac) = {
-  FC_TYPE(mac_addr),
+  FC_TYPE(mac_addr, FCS_MIXED),
   FC_ID(T_MAC),
   .legacy_kw = true,
   .name = "mac",
@@ -520,7 +524,7 @@ static const struct f_class FC_SN(f_type_mac) = {
 };
 
 static const struct f_class FC_SN(f_type_route) = {
-  FC_TYPE(struct rte *),
+  FC_TYPE(struct rte, FCS_LONG),
   FC_ID(T_ROUTE),
   .legacy_kw = true,
   .name = "route",
@@ -530,7 +534,7 @@ static const struct f_class FC_SN(f_type_route) = {
 };
 
 static const struct f_class FC_SN(f_type_routes) = {
-  FC_TYPE(struct rte *),
+  FC_TYPE(struct rte, FCS_LONG),
   FC_ID(T_ROUTES_BLOCK),
   .name = "routes",
   .same = SAME(VAL1 == VAL2),
