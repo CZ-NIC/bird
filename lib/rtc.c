@@ -52,7 +52,7 @@ rtc_format(char *buf, int buflen, const net_addr_rtc *n)
   char abuf[32] = { 0 };      /* Buffer for ASN/IP address */
   u32 val = 0;
 
-  if (type == 0x0002)
+  if (type == RTC_TYPE_AS2)
   {
     type_full  = "rt-as2";
     type_short = "rt";
@@ -62,7 +62,7 @@ rtc_format(char *buf, int buflen, const net_addr_rtc *n)
     bsnprintf(abuf, sizeof(abuf), "%u", asn);
     boundary = 32;
   }
-  else if (type == 0x0102)
+  else if (type == RTC_TYPE_IP4)
   {
     type_full  = "rt";
     type_short = "rt";
@@ -71,7 +71,7 @@ rtc_format(char *buf, int buflen, const net_addr_rtc *n)
     val = rt & 0xffff;
     bsnprintf(abuf, sizeof(abuf), "%I4", addr);
   }
-  else if (type == 0x0202)
+  else if (type == RTC_TYPE_AS4)
   {
     type_full  = "rt-as4";
     type_short = "rt-as4";
@@ -108,71 +108,56 @@ rtc_format(char *buf, int buflen, const net_addr_rtc *n)
 }
 
 struct net_addr *
-rtc_parse(const char *type_str, u32 asn, struct f_val asn_ip, u32 val, int pxlen)
+rtc_parse(int type, u32 asn, struct f_val asn_ip, u32 val, int pxlen)
 {
   struct net_addr_rtc *n = cfg_allocz(sizeof(struct net_addr_rtc));
-
   u64 rt = 0;
-  u64 type = 0;
 
-  if (type_str)
+  /* Ambiguous specifier RT was entered, need to distinguish between RT-AS2, RT-AS4 and RT-IP4 */
+  if (type == -1)
   {
-    if (strcmp(type_str, "rt-as2") == 0)
-      type = 0x0002;
-    else if (strcmp(type_str, "rt-ip4") == 0)
-      type = 0x0102;
-    else if (strcmp(type_str, "rt-as4") == 0)
-      type = 0x0202;
-    else if (strcmp(type_str, "rt") == 0)
-    {
-      if (asn_ip.type == T_INT)
-      {
-	if (asn > 0xffff)
-	  type = 0x0202;
-	else
-	  type = 0x0002;
-      }
-      else if (asn_ip.type == T_IP)
-	type = 0x0102;
-      else
-	cf_error("Unknown RT constraint type");
-    }
+    if (asn_ip.type == T_EC)
+      type = (asn_ip.val.ec > 0xffff) ? RTC_TYPE_AS4 : RTC_TYPE_AS2;  /* Distinguish between RT-AS2 and RT-AS4 */
+    else if (asn_ip.type == T_IP)
+      type = RTC_TYPE_IP4;
     else
-      cf_error("Unknown RT constraint type");
+      cf_error("Unknown RT constraint type (type == -1, asn_ip.type = 0x%u)", asn_ip.type);
   }
+  else if (type == RTC_TYPE_AS2 || type == RTC_TYPE_IP4 || type == RTC_TYPE_AS4)
+    ;
+  else if (type != 0)
+    cf_error("Unknown RT constraint type (type = 0x%u)", type);
 
-  rt |= type << 48;
+  rt |= (u64)type << 48;
 
-  if (type == 0x0002)
+  // store ASN as val.ec (u64) even though u32 is enough, or as val.i (uint) and then cast it here to u64
+  if (type == RTC_TYPE_AS2)
   {
-    if (asn_ip.val.i > 0xffff)
-      cf_error("ASN out of range for type 0x0002");
+    if (asn_ip.val.ec > 0xffff)
+      cf_error("ASN out of range for type RT-AS2");
 
-    // f_val.val.i is uint, ASN is u32, OK or not OK?
-
-    rt |= ((u64)asn_ip.val.i & 0xffff) << 16;
+    rt |= (asn_ip.val.ec & 0xffff) << 16;
     rt |= val & 0xffffffff;
   }
-  else if (type == 0x0102)
+  else if (type == RTC_TYPE_IP4)
   {
     if (val > 0xffff)
-      cf_error("Value out of range for type 0x0102");
+      cf_error("Value out of range for type RT-IP4");
 
-    rt |= ((u64)ip4_to_u32(ipa_to_ip4(asn_ip.val.ip))) << 16;
+    rt |= (u64)ip4_to_u32(ipa_to_ip4(asn_ip.val.ip)) << 16;
     rt |= val & 0xffff;
   }
-  else if (type == 0x0202)
+  else if (type == RTC_TYPE_AS4)
   {
     if (val > 0xffff)
-      cf_error("Value out of range for type 0x0202");
+      cf_error("Value out of range for type RT-AS4");
 
-    rt |= (u64)asn_ip.val.i << 48;
+    rt |= asn_ip.val.ec << 48;
     rt |= val & 0xffff;
   }
   else	  /* type == 0 */
   {
-    /* RT constraint has no type, it's just a 64-bit number */
-
+    /* Supplied RT constraint has no type, it's just a 64-bit number */
     if (asn_ip.type != T_EC)
       cf_error("Invalid type");
 
@@ -184,7 +169,7 @@ rtc_parse(const char *type_str, u32 asn, struct f_val asn_ip, u32 val, int pxlen
    * set the correct value according to type.
    */
   if (pxlen == -1)
-    pxlen = (type == 0x0002) ? 32 : 48;
+    pxlen = (type == RTC_TYPE_AS2) ? 32 : 48;
 
   net_fill_rtc((net_addr *)n, asn, vrt_from_u64(rt), (u32)pxlen);
 
