@@ -1111,6 +1111,10 @@
       asn = net->aspa.asn;
       break;
 
+    case NET_RTC:
+      asn = net->rtc.asn;
+      break;
+
     default:
       runtime("ROA or ASPA expected");
       break;
@@ -1135,6 +1139,13 @@
       runtime( "VPN or EVPN address expected" );
 
     RESULT(T_RD, rd, net_rd(v1.val.net));
+  ]]);
+
+  METHOD(T_NET, rt, 0, [[
+    if (!net_type_match(v1.val.net, NB_RTC))
+      runtime( "NET_RTC address expected" );
+
+    RESULT(T_EC, ec, vrt_to_u64(net_rtc(v1.val.net)));
   ]]);
 
   /* Get MAC address */
