@@ -18,6 +18,7 @@ CF_HDR
 #include "lib/string.h"
 #include "lib/rtc.h"
 #include "lib/evpn.h"
+#include "lib/rtc.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "nest/route.h"
@@ -84,6 +85,7 @@ CF_DECLS
   uint i;
   u32 i32;
   u64 i64;
+  u64 u64;
   vpn_rd rd;
   vpn_rt rt;
   ip_addr a;
@@ -156,7 +158,7 @@ CF_DECLS
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_eth_ net_mpls_ net_aspa_ net_nbr_
 %type <net_ptr> net_evpn_ net_evpn_ead_ net_evpn_mac_ net_evpn_mac_ip_ net_evpn_imet_ net_evpn_es_
 %type <net_ptr> net_rtc_ rt_constraint_
-%type <i> rtc_type_
+%type <u64> rtc_type_
 %type <v> asn_or_ip4_
 %type <mls> label_stack_start label_stack
 %type <esi> evpn_esi
@@ -519,11 +521,11 @@ label_stack:
 ;
 
 rtc_type_:
-	  { $$ = 0;	 }	/* No RT constraint type specified */
- | RT	  { $$ = -1;	 }	/* Ambiguous, exact type will be determined during parsing */
- | RT_AS2 { $$ = 0x0002; }
- | RT_AS4 { $$ = 0x0202; }
- | RT_IP4 { $$ = 0x0102; }
+	  { $$ = 0;		}	/* No RT constraint type specified */
+ | RT	  { $$ = (u64)-1;	}	/* Ambiguous, exact type will be determined during parsing */
+ | RT_AS2 { $$ = RTC_TYPE_AS2;	}
+ | RT_AS4 { $$ = RTC_TYPE_AS4;	}
+ | RT_IP4 { $$ = RTC_TYPE_IP4;	}
  ;
 
 asn_or_ip4_:

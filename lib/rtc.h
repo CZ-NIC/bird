@@ -17,6 +17,6 @@
 #define RTC_TYPE_AS4 0x0202
 
 int rtc_format(char *buf, int buflen, const struct net_addr_rtc *n);
-struct net_addr * rtc_parse(int type, u32 asn, struct f_val asn_ip, u32 val, int pxlen);
+struct net_addr * rtc_parse(u64 type, u32 asn, struct f_val asn_ip, u32 val, int pxlen);
 
 #endif

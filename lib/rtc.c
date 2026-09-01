@@ -61,6 +61,9 @@ rtc_format(char *buf, int buflen, const net_addr_rtc *n)
     val = rt & 0xffffffff;
     bsnprintf(abuf, sizeof(abuf), "%u", asn);
     boundary = 32;
+
+    if (asn < 0xffff)
+      type_full = type_short;
   }
   else if (type == RTC_TYPE_IP4)
   {
@@ -108,35 +111,31 @@ rtc_format(char *buf, int buflen, const net_addr_rtc *n)
 }
 
 struct net_addr *
-rtc_parse(int type, u32 asn, struct f_val asn_ip, u32 val, int pxlen)
+rtc_parse(u64 type, u32 asn, struct f_val asn_ip, u32 val, int pxlen)
 {
   struct net_addr_rtc *n = cfg_allocz(sizeof(struct net_addr_rtc));
   u64 rt = 0;
 
-  /* Ambiguous specifier RT was entered, need to distinguish between RT-AS2, RT-AS4 and RT-IP4 */
-  if (type == -1)
+  /* Ambiguous specifier 'RT' was entered, we need to distinguish between RT-AS2, RT-AS4 and RT-IP4 */
+  if (type == U64(-1))
   {
     if (asn_ip.type == T_EC)
-      type = (asn_ip.val.ec > 0xffff) ? RTC_TYPE_AS4 : RTC_TYPE_AS2;  /* Distinguish between RT-AS2 and RT-AS4 */
+      type = (asn_ip.val.ec > 0xffff) ? RTC_TYPE_AS4 : RTC_TYPE_AS2;
     else if (asn_ip.type == T_IP)
       type = RTC_TYPE_IP4;
-    else
-      cf_error("Unknown RT constraint type (type == -1, asn_ip.type = 0x%u)", asn_ip.type);
   }
-  else if (type == RTC_TYPE_AS2 || type == RTC_TYPE_IP4 || type == RTC_TYPE_AS4)
-    ;
-  else if (type != 0)
-    cf_error("Unknown RT constraint type (type = 0x%u)", type);
 
-  rt |= (u64)type << 48;
+  if (type != 0 && type != RTC_TYPE_AS2 && type != RTC_TYPE_AS4 && type != RTC_TYPE_IP4)
+    cf_error("Unrecognized RT constraint type");
 
-  // store ASN as val.ec (u64) even though u32 is enough, or as val.i (uint) and then cast it here to u64
+  rt |= type << 48;
+
   if (type == RTC_TYPE_AS2)
   {
     if (asn_ip.val.ec > 0xffff)
       cf_error("ASN out of range for type RT-AS2");
 
-    rt |= (asn_ip.val.ec & 0xffff) << 16;
+    rt |= (asn_ip.val.ec & 0xffff) << 32;
     rt |= val & 0xffffffff;
   }
   else if (type == RTC_TYPE_IP4)
@@ -152,7 +151,7 @@ rtc_parse(int type, u32 asn, struct f_val asn_ip, u32 val, int pxlen)
     if (val > 0xffff)
       cf_error("Value out of range for type RT-AS4");
 
-    rt |= asn_ip.val.ec << 48;
+    rt |= asn_ip.val.ec << 16;
     rt |= val & 0xffff;
   }
   else	  /* type == 0 */
@@ -165,11 +164,14 @@ rtc_parse(int type, u32 asn, struct f_val asn_ip, u32 val, int pxlen)
   }
 
   /*
-   * If pxlen lies at the boundary of ASN/IPv4 and value field (indicated by -1),
+   * If pxlen lies at the boundary of ASN/IPv4 field and value field (indicated by -1),
    * set the correct value according to type.
    */
   if (pxlen == -1)
     pxlen = (type == RTC_TYPE_AS2) ? 32 : 48;
+
+  /* Clear off any bits beyond pxlen */
+  rt &= u64_mkmask(pxlen);
 
   net_fill_rtc((net_addr *)n, asn, vrt_from_u64(rt), (u32)pxlen);
 
