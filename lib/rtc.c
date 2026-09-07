@@ -111,7 +111,7 @@ rtc_format(char *buf, int buflen, const net_addr_rtc *n)
 }
 
 struct net_addr *
-rtc_parse(u64 type, u32 asn, struct f_val asn_ip, u32 val, int pxlen)
+rtc_parse(u64 type, u32 asn, struct f_val asn_ip, u32 val, int pxlen, bool value_field)
 {
   struct net_addr_rtc *n = cfg_allocz(sizeof(struct net_addr_rtc));
   u64 rt = 0;
@@ -124,11 +124,6 @@ rtc_parse(u64 type, u32 asn, struct f_val asn_ip, u32 val, int pxlen)
     else if (asn_ip.type == T_IP)
       type = RTC_TYPE_IP4;
   }
-
-  if (type != 0 && type != RTC_TYPE_AS2 && type != RTC_TYPE_AS4 && type != RTC_TYPE_IP4)
-    cf_error("Unrecognized RT constraint type");
-
-  rt |= type << 48;
 
   if (type == RTC_TYPE_AS2)
   {
@@ -154,7 +149,7 @@ rtc_parse(u64 type, u32 asn, struct f_val asn_ip, u32 val, int pxlen)
     rt |= asn_ip.val.ec << 16;
     rt |= val & 0xffff;
   }
-  else	  /* type == 0 */
+  else if (type == 0)
   {
     /* Supplied RT constraint has no type, it's just a 64-bit number */
     if (asn_ip.type != T_EC)
@@ -162,13 +157,27 @@ rtc_parse(u64 type, u32 asn, struct f_val asn_ip, u32 val, int pxlen)
 
     rt = asn_ip.val.ec;
   }
+  else
+    cf_error("Unrecognized RT constraint type");
+
+  rt |= type << 48;
 
   /*
-   * If pxlen lies at the boundary of ASN/IPv4 field and value field (indicated by -1),
-   * set the correct value according to type.
+   * 1. If pxlen lies at the boundary of ASN/IPv4 field and value field (indicated by -1),
+   *	set the correct value according to type.
+   * 2. Since pxlen is specified relative to the ASN/IPv4 or value field, not the whole RTC,
+   *	we have to recompute it to the pxlen of the whole RTC by adding length of preceding
+   *	fields.
    */
   if (pxlen == -1)
     pxlen = (type == RTC_TYPE_AS2) ? 32 : 48;
+  else
+  {
+    if (value_field)  /* Both type field (2B) and either AS2 (2B) or AS4/IP4 fields (4B) are preceding */
+      pxlen += (type == RTC_TYPE_AS2) ? 32 : 48;
+    else	      /* Only type field (2B) is preceding */
+      pxlen += 16;
+  }
 
   /* Clear off any bits beyond pxlen */
   rt &= u64_mkmask(pxlen);

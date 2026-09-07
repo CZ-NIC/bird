@@ -534,12 +534,12 @@ asn_or_ip4_:
  ;
 
 rt_constraint_:
-   '(' NUM '/' NUM ')' AS NUM { $$ = rtc_parse(0, $7, (struct f_val) { .type = T_EC, .val.ec = $2 }, 0, $4); }
- | '(' rtc_type_ ',' '*' ',' '*' ')'			AS NUM	{ $$ = rtc_parse($2, $9, (struct f_val) { .type = T_EC, .val.ec = 0 }, 0, 16); }
- | '(' rtc_type_ ',' asn_or_ip4_ '/' NUM ',' '*' ')'	AS NUM	{ $$ = rtc_parse($2, $11, $4, 0,  $6); }
- | '(' rtc_type_ ',' asn_or_ip4_ ',' '*' ')'		AS NUM	{ $$ = rtc_parse($2, $9,  $4, 0,  -1); }
- | '(' rtc_type_ ',' asn_or_ip4_ ',' NUM '/' NUM ')'	AS NUM	{ $$ = rtc_parse($2, $11, $4, $6, $8); }
- | '(' rtc_type_ ',' asn_or_ip4_ ',' NUM ')'		AS NUM	{ $$ = rtc_parse($2, $9,  $4, $6, 64); }
+   '(' NUM '/' NUM ')' AS NUM { $$ = rtc_parse(0, $7, (struct f_val) { .type = T_EC, .val.ec = $2 }, 0, $4, false); }
+ | '(' rtc_type_ ',' '*' ',' '*' ')'			AS NUM	{ $$ = rtc_parse($2, $9, (struct f_val) { .type = T_EC, .val.ec = 0 }, 0, 16, false); }
+ | '(' rtc_type_ ',' asn_or_ip4_ '/' NUM ',' '*' ')'	AS NUM	{ $$ = rtc_parse($2, $11, $4, 0,  $6, false); }
+ | '(' rtc_type_ ',' asn_or_ip4_ ',' '*' ')'		AS NUM	{ $$ = rtc_parse($2, $9,  $4, 0,  -1, false); }
+ | '(' rtc_type_ ',' asn_or_ip4_ ',' NUM '/' NUM ')'	AS NUM	{ $$ = rtc_parse($2, $11, $4, $6, $8,  true); }
+ | '(' rtc_type_ ',' asn_or_ip4_ ',' NUM ')'		AS NUM	{ $$ = rtc_parse($2, $9,  $4, $6, 64, false); }
  ;
 
 net_rtc_ : RTC rt_constraint_
