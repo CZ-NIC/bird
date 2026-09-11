@@ -110,8 +110,37 @@ rtc_format(char *buf, int buflen, const net_addr_rtc *n)
   return -1;
 }
 
+static inline void
+check_u16(u64 val, const char *msg)
+{
+  if (val > 0xffff)
+    cf_error(msg);
+}
+
+static inline void
+check_prefix(u32 prefix, int pxlen)
+{
+  if (pxlen < 0 || pxlen > 32)
+    cf_error("Invalid pxlen: %d", pxlen);
+
+  if ((prefix & ~u32_mkmask(pxlen)) != 0)
+    cf_error("Invalid RTC prefix %u/%d, maybe you wanted %u/%d",
+	     prefix, pxlen, prefix & u32_mkmask(pxlen), pxlen);
+}
+
+static inline void
+check_prefix64(u64 prefix, int pxlen)
+{
+  if (pxlen < 0 || pxlen > 64)
+    cf_error("Invalid pxlen: %d", pxlen);
+
+  if ((prefix & ~u64_mkmask(pxlen)) != 0)
+    cf_error("Invalid RTC prefix 0x%lx/%d, maybe you wanted 0x%lx/%d",
+	     prefix, pxlen, prefix & u64_mkmask(pxlen), pxlen);
+}
+
 struct net_addr *
-rtc_parse(u64 type, u32 asn, struct f_val asn_ip, u32 val, int pxlen, bool value_field)
+rtc_parse(u64 type, u32 asn, struct f_val asn_ip, u32 val, int pxlen, enum rtc_prefix_position px_pos)
 {
   struct net_addr_rtc *n = cfg_allocz(sizeof(struct net_addr_rtc));
   u64 rt = 0;
@@ -127,24 +156,36 @@ rtc_parse(u64 type, u32 asn, struct f_val asn_ip, u32 val, int pxlen, bool value
 
   if (type == RTC_TYPE_AS2)
   {
-    if (asn_ip.val.ec > 0xffff)
-      cf_error("ASN out of range for type RT-AS2");
+    check_u16(asn_ip.val.ec, "ASN out of range (0-65535) for type RT-AS2");
+
+    if (px_pos == RTC_PREFIX_POSITION_ASN)
+      check_prefix(asn_ip.val.ec, pxlen);
+    else if (px_pos == RTC_PREFIX_POSITION_VALUE)
+      check_prefix(val, pxlen);
 
     rt |= (asn_ip.val.ec & 0xffff) << 32;
     rt |= val & 0xffffffff;
   }
   else if (type == RTC_TYPE_IP4)
   {
-    if (val > 0xffff)
-      cf_error("Value out of range for type RT-IP4");
+    check_u16(val, "Value out of range (0-65535) for type RT-IP4");
+
+    if (px_pos == RTC_PREFIX_POSITION_ASN)
+      check_prefix(asn_ip.val.ec, pxlen);
+    else if (px_pos == RTC_PREFIX_POSITION_VALUE)
+      check_prefix(val, pxlen);
 
     rt |= (u64)ip4_to_u32(ipa_to_ip4(asn_ip.val.ip)) << 16;
     rt |= val & 0xffff;
   }
   else if (type == RTC_TYPE_AS4)
   {
-    if (val > 0xffff)
-      cf_error("Value out of range for type RT-AS4");
+    check_u16(val, "Value out of range (0-65535) for type RT-AS4");
+
+    if (px_pos == RTC_PREFIX_POSITION_ASN)
+      check_prefix(asn_ip.val.ec, pxlen);
+    else if (px_pos == RTC_PREFIX_POSITION_VALUE)
+      check_prefix(val, pxlen);
 
     rt |= asn_ip.val.ec << 16;
     rt |= val & 0xffff;
@@ -153,11 +194,13 @@ rtc_parse(u64 type, u32 asn, struct f_val asn_ip, u32 val, int pxlen, bool value
   {
     /* Supplied RT constraint has no type, it's just a 64-bit number */
     if (asn_ip.type != T_EC)
-      cf_error("Invalid type");
+      cf_error("Fatal error");
+
+    check_prefix64(asn_ip.val.ec, pxlen);
 
     rt = asn_ip.val.ec;
   }
-  else
+ else
     cf_error("Unrecognized RT constraint type");
 
   rt |= type << 48;
@@ -165,22 +208,38 @@ rtc_parse(u64 type, u32 asn, struct f_val asn_ip, u32 val, int pxlen, bool value
   /*
    * 1. If pxlen lies at the boundary of ASN/IPv4 field and value field (indicated by -1),
    *	set the correct value according to type.
-   * 2. Since pxlen is specified relative to the ASN/IPv4 or value field, not the whole RTC,
-   *	we have to recompute it to the pxlen of the whole RTC by adding length of preceding
-   *	fields.
+   * 2. Since pxlen is relative to the ASN/IPv4 or value field, not the whole RTC, we have to
+   *	recompute it to the pxlen of the whole RTC by adding length of preceding fields.
    */
-  if (pxlen == -1)
+
+  /*
+   * In cases when prefix does not lie directly at the boundary of RTC fields,
+   * prefix length is specified relative to this particular field. In order to
+   * have pxlen of the entire RTC prefix, we have to recompute it.
+   *
+   * 1. Prefix lies at the boundary between type field and ASN/IPv4 field,
+   *	pxlen is length of type field (2B)
+   * 2. Prefix lies inside ASN/IPv4 field, add length of the preceding type field (2B)
+   * 3. Prefix lies at the boundary between ASN/IPv4 field and value field, pxlen is
+   *	sum of length of preceding type field (2B) and ASN/IPv4 field (2B/4B)
+   * 4. Prefix lies inside value field, add length of preceding type field (2B) and
+   *	ASN/IPv4 field (2B/4B)
+   */
+  if (px_pos == RTC_PREFIX_POSITION_IGNORE)
+    ;
+  else if (px_pos == RTC_PREFIX_POSITION_TYPE_ASN)
+    pxlen = 16;
+  else if (px_pos == RTC_PREFIX_POSITION_ASN)
+    pxlen += 16;
+  else if (px_pos == RTC_PREFIX_POSITION_ASN_VALUE)
     pxlen = (type == RTC_TYPE_AS2) ? 32 : 48;
-  else
-  {
-    if (value_field)  /* Both type field (2B) and either AS2 (2B) or AS4/IP4 fields (4B) are preceding */
-      pxlen += (type == RTC_TYPE_AS2) ? 32 : 48;
-    else	      /* Only type field (2B) is preceding */
-      pxlen += 16;
-  }
+  else if (px_pos == RTC_PREFIX_POSITION_VALUE)
+    pxlen += (type == RTC_TYPE_AS2) ? 32 : 48;
+  else if (px_pos == RTC_PREFIX_POSITION_END)
+    pxlen = 64;
 
   /* Clear off any bits beyond pxlen */
-  rt &= u64_mkmask(pxlen);
+  //rt &= u64_mkmask(pxlen);
 
   net_fill_rtc((net_addr *)n, asn, vrt_from_u64(rt), (u32)pxlen);
 
