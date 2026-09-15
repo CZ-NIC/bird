@@ -1318,7 +1318,7 @@ export_filter(struct channel *c, rte *rt, int silent)
  * stats update and logging.
  */
 static void
-do_rt_notify(struct channel *c, const net_addr *net, const rte *new, const rte *old)
+do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
 {
   //log("do_rt_notify new id %i old id %i", new?new->id:0, old? old->id:0);
   struct proto *p = c->proto;
@@ -1842,7 +1842,10 @@ rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
   const rte *new_best = rte_select_best(rte_for_selection, selection_count);
 
   if (old_best != new_best)
-    do_rt_notify(c, feed->ni->addr, new_best, old_best);
+  {
+    rte nb0 = *new_best;
+    do_rt_notify(c, feed->ni->addr, &nb0, old_best);
+  }
   else
   {
     RT_NOTIFY_DEBUG("nothing to export for %N", feed->ni->addr);
@@ -1858,7 +1861,6 @@ channel_notify_accepted(void *_channel)
 
   RT_EXPORT_WALK(&c->out_req, u)
   {
-    log("channel_notify_accepted u kind is %i, routes %i", u->kind, u->feed->count_routes);
     switch (u->kind)
     {
       case RT_EXPORT_STOP:
