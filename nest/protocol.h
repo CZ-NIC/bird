@@ -201,7 +201,7 @@ struct proto {
    *			1= reload is scheduled and will happen (asynchronously).
    */
 
-  void (*rt_notify)(struct proto *, struct channel *, const net_addr *net, struct rte *new, const struct rte *old);
+  void (*rt_notify)(struct proto *, struct channel *, const net_addr *net, const struct rte *new, const struct rte *old);
   int (*preexport)(struct channel *, struct rte *rt);
   void (*export_fed)(struct channel *);
   void (*refeed_begin)(struct channel *, struct rt_feeding_request *rfr);
@@ -636,6 +636,7 @@ struct channel {
   struct bmap imported_map;		/* Which nets were touched by our import */
   struct bmap export_accepted_map;	/* Keeps track which routes were really exported */
   struct bmap export_rejected_map;	/* Keeps track which routes were rejected by export filter */
+  struct bmap export_best_map;    /* Keeps track which routes were chosen as best */
 
   struct limit rx_limit;		/* Receive limit (for in_keep & RIK_REJECTED) */
   struct limit in_limit;		/* Input limit */

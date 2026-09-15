@@ -918,6 +918,7 @@ channel_start_export(struct channel *c)
 
   bmap_init(&c->export_accepted_map, p, 16);
   bmap_init(&c->export_rejected_map, p, 16);
+  bmap_init(&c->export_best_map, p, 16);
 
   channel_reset_limit(c, &c->out_limit, PLD_OUT);
 

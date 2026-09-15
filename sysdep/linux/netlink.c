@@ -483,6 +483,7 @@ nl_error(struct nlmsghdr *h, int ignore_esrch)
     msg = nl_get_ext_msg(NLMSG_RTA(h, body), NLMSG_PAYLOAD(h, body));
 
   log_rl(&rl_netlink_err, L_WARN "Netlink: %s", msg ?: strerror(err));
+  bug("trace");
   return err;
 
 err:
