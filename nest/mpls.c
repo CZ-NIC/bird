@@ -483,9 +483,7 @@ static void mpls_cleanup_ranges(void *_domain)
 
   struct mpls_range *r, *rnext;
   WALK_LIST_BACKWARDS_DELSAFE(r, rnext, m->ranges)
-    if (!r->removed)
-      return;
-    else if (!r->use_count)
+    if (r->removed && !r->use_count && !r->label_count)
       mpls_free_range(r);
 }
 
@@ -635,6 +633,12 @@ mpls_channel_init(struct channel *C, struct channel_config *CC)
     c->range = cc->range->range;
     c->label_policy = cc->label_policy;
     c->rts = cc->rts;
+
+    MPLS_RANGE_LOCKED(c->range, r)
+    {
+      DBGL("Lock range %p (init channel %p)", r, c);
+      mpls_lock_range(r);
+    }
   }
 }
 
@@ -669,6 +673,12 @@ mpls_channel_cleanup(struct channel *C)
   if (!c->rts)
     return;
 
+  MPLS_RANGE_LOCKED(c->range, r)
+  {
+    DBGL("Unlock range %p (cleanup channel %p)", r, c);
+    mpls_unlock_range(r);
+  }
+
   mpls_fec_map_free(c->mpls_map);
   c->mpls_map = NULL;
 }
@@ -687,7 +697,7 @@ mpls_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impo
     if (c->c.channel_state != CS_DOWN)
       MPLS_RANGE_LOCKED(c->range, r)
       {
-	DBGL("Unlock range %p (channel %p)", r, c);
+	DBGL("Unlock range %p (reconfig channel %p)", r, c);
 	mpls_unlock_range(r);
       }
 
@@ -697,7 +707,7 @@ mpls_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impo
     if (c->c.channel_state != CS_DOWN)
       MPLS_RANGE_LOCKED(c->range, r)
       {
-	DBGL("Lock range %p (channel %p)", r, c);
+	DBGL("Lock range %p (reconfig channel %p)", r, c);
 	mpls_lock_range(r);
       }
   }
