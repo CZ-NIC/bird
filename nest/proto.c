@@ -1653,6 +1653,8 @@ proto_new(struct proto_config *cf)
   p->last_state_change = current_time();
   p->last_reconfiguration = current_time();
 
+  p->vrf = cf->vrf;
+
   p->net_type = cf->net_type;
   p->disabled = cf->disabled;
   p->hash_key = random_u32();
@@ -1707,9 +1709,7 @@ proto_init(struct proto_config *c, struct proto *after)
 
   callback_init(&p->check_done_cb, proto_event, p->loop);
 
-  p->vrf = c->vrf;
   proto_add_after(&global_proto_list, p, after);
-
   proto_announce_state(p, p->ea_state);
 
   PD(p, "Initializing%s", p->disabled ? " [disabled]" : "");
