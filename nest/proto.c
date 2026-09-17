@@ -1512,6 +1512,8 @@ proto_new(struct proto_config *cf)
   p->last_state_change = current_time();
   p->last_reconfiguration = current_time();
 
+  p->vrf = cf->vrf;
+
   p->net_type = cf->net_type;
   p->disabled = cf->disabled;
   p->hash_key = random_u32();
@@ -1563,9 +1565,7 @@ proto_init(struct proto_config *c, struct proto *after)
   struct proto *p = pr->init(c);
 
   p->loop = &main_birdloop;
-  p->vrf = c->vrf;
   proto_add_after(&global_proto_list, p, after);
-
   proto_announce_state(p, p->ea_state);
 
   p->event = ev_new_init(proto_pool, proto_event, p);
