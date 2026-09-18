@@ -512,6 +512,20 @@ radv_rx_hook(sock *sk, uint size)
   if (ipa_equal(sk->faddr, sk->saddr))
     return 1;
 
+  /* RFC 4861 6.1.2 - Hop Limit must be 255 */
+  if (ifa->cf->check_hop_limit && (sk->rcv_ttl != 255))
+  {
+    RADV_TRACE(D_PACKETS, "Received packet from %I with hop limit %d, ignoring", sk->faddr, sk->rcv_ttl);
+    return 1;
+  }
+
+  /* RFC 4861 6.1.2 - Source must be link-local */
+  if (ifa->cf->check_link_local && !ipa_is_link_local(sk->faddr))
+  {
+    RADV_TRACE(D_PACKETS, "Received packet from non-link-local address %I, ignoring", sk->faddr);
+    return 1;
+  }
+
   if (size < 8)
     return 1;
 
@@ -520,8 +534,7 @@ radv_rx_hook(sock *sk, uint size)
   if (buf[1] != 0)
     return 1;
 
-  /* Validation is a bit sloppy - Hop Limit is not checked and
-     length of options is ignored for RS and left to later for RA */
+  /* Note: Length of options is ignored for RS and left to later for RA */
 
   switch (buf[0])
   {
@@ -573,7 +586,7 @@ radv_sk_open(struct radv_iface *ifa)
   sk->rbsize = 1024; // bufsize(ifa);
   sk->tbsize = 1024; // bufsize(ifa);
   sk->data = ifa;
-  sk->flags = SKF_LADDR_RX;
+  sk->flags = SKF_LADDR_RX | (ifa->cf->check_hop_limit ? SKF_TTL_RX : 0);
 
   if (sk_open(sk) < 0)
     goto err;

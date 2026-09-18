@@ -92,6 +92,8 @@ struct radv_iface_config
   u8 default_preference;	/* Default Router Preference (RFC 4191) */
   u8 route_preference;		/* Specific Route Preference (RFC 4191) */
   u8 router_discovery;		/* Enable neighbor router discovery */
+  u8 check_hop_limit;		/* Check Hop Limit 255 in received RAs (RFC 4861 6.1.2) */
+  u8 check_link_local;		/* Check link-local source in received RAs (RFC 4861 6.1.2) */
 };
 
 struct radv_prefix_config

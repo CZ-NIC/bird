@@ -109,6 +109,8 @@ radv_iface_start:
   RADV_IFACE->route_lifetime = (u32) -1;
   RADV_IFACE->route_lifetime_sensitive = 0;
   RADV_IFACE->route_preference = RA_PREF_MEDIUM;
+  RADV_IFACE->check_hop_limit = 1;
+  RADV_IFACE->check_link_local = 1;
 };
 
 radv_iface_item:
@@ -143,6 +145,8 @@ radv_iface_item:
  | DNSSL LOCAL bool { RADV_IFACE->dnssl_local = $3; }
  | CUSTOM OPTION LOCAL bool { RADV_IFACE->custom_local = $4; }
  | ROUTER DISCOVERY bool { RADV_IFACE->router_discovery = $3; }
+ | CHECK HOP LIMIT bool { RADV_IFACE->check_hop_limit = $4; }
+ | CHECK LINK LOCAL bool { RADV_IFACE->check_link_local = $4; }
  ;
 
 radv_preference:

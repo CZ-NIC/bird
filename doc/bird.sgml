@@ -6273,7 +6273,25 @@ custom option type 38 value hex:0e:10:20:01:0d:b8:00:0a:00:0b:00:00:00:00;
 	object is automatically removed from the peers table. Currently, this feature
 	is primarily used in conjunction with BGP unnumbered automatic peering to
 	automatically discover BGP neighbors. Default: no.
+
+	<tag><label id="radv-check-hop-limit">check hop limit <m/switch/</tag>
+	Check that received RAs and RSs have IP Hop Limit set to 255, as required
+	by RFC 4861 6.1.2. Packets with any other Hop Limit are ignored. This is
+	the IPv6 Router Advertisement equivalent of TTL security. Default: yes.
+
+	<tag><label id="radv-check-link-local">check link local <m/switch/</tag>
+	Check that received RAs and RSs are sent from an IPv6 link-local address,
+	as required by RFC 4861 6.1.2. Packets from any other address are ignored.
+	Default: yes.
 </descrip>
+
+<p>Note that <cf/router discovery/ processes RAs received from other routers
+on the link. As with any neighbor discovery mechanism based on unauthenticated
+ICMPv6 messages, it is intended for use in controlled environments (e.g. IXP
+peering LANs managed by the same operator); on segments where the set of
+attached routers is not controlled, forged RAs can create arbitrary neighbor
+entries. Both validation checks above should be kept enabled unless there is
+a specific reason to disable them.
 
 <p>Prefix specific options
 
