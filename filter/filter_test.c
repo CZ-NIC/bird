@@ -79,9 +79,11 @@ main(int argc, char *argv[])
   if (!bt_config_file_parse(BT_CONFIG_FILE))
     abort();
 
+  bt_run_always++;
   bt_test_suite_arg_extra(t_reconfig, BT_CONFIG_FILE ".overlay", 0, BT_TIMEOUT, "Testing reconfiguration to overlay");
   bt_test_suite_arg_extra(t_reconfig, BT_CONFIG_FILE, 0, BT_TIMEOUT, "Testing reconfiguration back");
   bt_test_suite_arg_extra(t_reconfig, BT_CONFIG_FILE, 0, BT_TIMEOUT, "Testing reconfiguration to the same file");
+  bt_run_always--;
 
   /* Hack: this should be enough to let the other thread run and make the ROA table converge */
   birdloop_yield();

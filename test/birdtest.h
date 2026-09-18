@@ -18,6 +18,7 @@
 
 
 extern int bt_is_extended;
+extern int bt_run_always;
 extern int bt_result;
 extern int bt_suite_result;
 extern char bt_out_fmt_buf[1024];
