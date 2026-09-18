@@ -1046,10 +1046,8 @@ bmp_split_policy(struct bmp_proto *p, const rte *new, const rte *old)
 
     bsi.mode = BMP_STREAM_PRE_POLICY;
     struct bmp_stream *bs = bmp_get_stream(p, &bsi);
-    if (!bs)
-      return;
-
-    bmp_route_monitor_notify(p, bp, bs, &loc, old_attrs);
+    if (bs)
+      bmp_route_monitor_notify(p, bp, bs, &loc, old_attrs);
   }
 
   /* Checking the post policy */
@@ -1061,10 +1059,8 @@ bmp_split_policy(struct bmp_proto *p, const rte *new, const rte *old)
 
     bsi.mode = BMP_STREAM_POST_POLICY;
     struct bmp_stream *bs = bmp_get_stream(p, &bsi);
-    if (!bs)
-      return;
-
-    bmp_route_monitor_notify(p, bp, bs, &loc, old_attrs);
+    if (bs)
+      bmp_route_monitor_notify(p, bp, bs, &loc, old_attrs);
   }
 }
 
