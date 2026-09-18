@@ -3010,6 +3010,7 @@ bgp_create_update_bmp(ea_list *channel_ea, byte *buf, byte *end, const struct rt
   /* Temporary bucket */
   struct bgp_bucket b = {
     .bmp = 1,
+    .my_id = 1,
     .eattrs = new->attrs,
     .prefixes.pref = &px,
     .last_pref_id = 1,
