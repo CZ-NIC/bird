@@ -491,16 +491,20 @@ static struct ea_class ea_roa_aggregated = {
  * total number of table access is always capped by 128, or 32 for legacy IP.
  */
 
+static net *rt_net_feed_get_net(struct rtable_reading *tr, uint index);
+
 static void
 rt_aggregate_roa(void *_rag)
 {
   struct rt_roa_aggregator *rag = _rag;
 
+  //bug("nraeeeeeeeeeeeeeeedk src %s state %i", rag->src.name, rag->src.export_state);
   RT_EXPORT_WALK(&rag->src, u) TMP_SAVED
   {
     /* Watch updates in the main ROA table on the best feed. These should
      * provide us with an information whether there is or isn't some record
      * with that prefix, maxlen and ASN. */
+    bug("in rt_aggregate_roa WALK");
     bool withdraw = 0;
     const net_addr *nroa = NULL;
     switch (u->kind)
@@ -543,7 +547,14 @@ rt_aggregate_roa(void *_rag)
     }
 
     /* What is the current state in the aggregated table? */
-    rte prev = rt_net_best(rag->stream.dst_tab, &nip.n);
+    RT_READ(rag->stream.dst_tab, tr);
+
+
+    bug("i am here");
+    struct netindex *idx = net_find_index(rag->stream.dst_tab->netindex, nroa);
+    net *n = rt_net_feed_get_net(tr, idx->index);
+    struct rte_storage *prev_stor = atomic_load_explicit(&n->routes, memory_order_relaxed);
+    rte prev = prev_stor->rte;
     const struct rt_roa_aggregated_adata rad0 = {}, *rad = &rad0;
     uint count = 0;
 
