@@ -40,6 +40,7 @@ static int no_fork;
 static int no_timeout;
 static int is_terminal;		/* Whether stdout is a live terminal or pipe redirect */
 int bt_is_extended;
+int bt_run_always;
 
 volatile sig_atomic_t async_config_flag;		/* Asynchronous reconfiguration/dump scheduled */
 volatile sig_atomic_t async_dump_flag;
@@ -357,7 +358,7 @@ bt_test_suite_base(int (*fn)(const void *), const char *id, const void *fn_arg, 
   if (no_timeout)
     timeout = 0;
 
-  if (request && strcmp(id, request))
+  if (!bt_run_always && request && strcmp(id, request))
     return 1;
 
   bt_suite_result = 1;
