@@ -32,15 +32,6 @@ extern struct ea_class ea_krt_source, ea_krt_metric;
 #define KRT_LEARN_ALL	2	/* Learn both KRT_SRC_ALIEN and KRT_SRC_KERNEL routes */
 
 
-#define EA_IFACE_TYPE			EA_CODE(PROTOCOL_DEVICE, 0)
-
-#define EA_IFACE_BRIDGE_VLAN_FILTERING	EA_CODE(PROTOCOL_DEVICE, 1)
-
-#define EA_IFACE_VXLAN_ID		EA_CODE(PROTOCOL_DEVICE, 2)
-#define EA_IFACE_VXLAN_LEARNING		EA_CODE(PROTOCOL_DEVICE, 3)
-#define EA_IFACE_VXLAN_IP_ADDR		EA_CODE(PROTOCOL_DEVICE, 4)
-
-
 /* Whenever we recognize our own routes, we allow learing of foreign routes */
 
 #ifdef CONFIG_SELF_CONSCIOUS

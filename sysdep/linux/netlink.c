@@ -1583,7 +1583,7 @@ kif_do_scan(struct kif_proto *p UNUSED)
       if (f.master != i->master)
       {
 	memcpy(f.name, i->name, sizeof(f.name));
-	f.attrs = i->attrs ? rta_clone(i->attrs) : NULL;
+	f.attrs = i->attrs;
 	if_update_locked(&f);
       }
     }
