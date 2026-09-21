@@ -1479,12 +1479,31 @@ bgp_find_ea_class_by_id(uint id)
  *	Attribute export
  */
 
+/* List of non-BGP attributes that are exported to bgp_bucket */
+static const struct ea_class *bgp_attr_export_list[] = { };
+
+static inline bool
+bgp_alien_attr_wanted(uint id)
+{
+  for (int i = 0; i < (int)ARRAY_SIZE(bgp_attr_export_list); i++)
+    if (id == bgp_attr_export_list[i]->id)
+      return true;
+
+  return false;
+}
+
 static inline void
 bgp_export_attr(struct bgp_export_state *s, eattr *a, ea_list *to)
 {
   const union bgp_attr_desc *desc = bgp_find_attr_desc(a);
   if (!desc)
+  {
+    /* We keep some non-BGP attributes for later */
+    if (bgp_alien_attr_wanted(a->id))
+      to->attrs[to->count++] = *a;
+
     return;
+  }
 
   /* The flags should be correct, we reset them just to be sure */
   ASSERT(!((a->flags ^ desc->flags) & (BAF_OPTIONAL | BAF_TRANSITIVE)));
@@ -1549,11 +1568,10 @@ static inline int
 bgp_encode_attr(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
 {
   const union bgp_attr_desc *desc = bgp_find_attr_desc(a);
-  if (s->ignore_non_bgp_attrs == 0)
-    ASSERT_DIE(desc);
-  else if (desc == NULL)
+  if (desc)
+    return desc->encode(s, a, buf, size);
+  else
     return 0;
-  return desc->encode(s, a, buf, size);
 }
 
 /**
