@@ -911,6 +911,10 @@
 	    RESULT_(T_IP, ip, *((const ip_addr *) e->u.ptr->data));
 	    break;
 
+	  case T_MAC:
+	    RESULT_(T_MAC, mac, *((const mac_addr *) e->u.ptr->data));
+	    break;
+
 	  case T_STRING:
 	    RESULT_(T_STRING, s, (const char *) e->u.ptr->data);
 	    break;
@@ -944,6 +948,7 @@
     FID_INTERPRET_BODY;
     {
       struct eattr *a;
+      struct adata *ad = NULL;
 
       switch (da->type) {
       case T_IFACE:
@@ -954,6 +959,11 @@
       case T_IP:
 	a = ea_set_attr(&fs->rte->attrs,
 	    EA_LITERAL_STORE_ADATA(da, da->flags, &v1.val.ip, sizeof(ip_addr)));
+	break;
+
+      case T_MAC:
+	a = ea_set_attr(&fs->rte->attrs,
+	    EA_LITERAL_STORE_ADATA(da, da->flags, &v1.val.mac, sizeof(mac_addr)));
 	break;
 
       case T_STRING:

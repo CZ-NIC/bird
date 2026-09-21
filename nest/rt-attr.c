@@ -1496,6 +1496,9 @@ ea_show(struct cli *c, const eattr *e)
 	case T_IP:
 	  bsprintf(pos, "%I", *(ip_addr *) ad->data);
 	  break;
+	case T_MAC:
+	  bsprintf(pos, "%6b", ad->data);
+	  break;
 	case T_QUAD:
 	  bsprintf(pos, "%R", e->u.data);
 	  break;
