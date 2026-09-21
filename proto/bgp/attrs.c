@@ -1480,7 +1480,9 @@ bgp_find_ea_class_by_id(uint id)
  */
 
 /* List of non-BGP attributes that are exported to bgp_bucket */
-static const struct ea_class *bgp_attr_export_list[] = { };
+static const struct ea_class *bgp_attr_export_list[] = {
+  &ea_gen_evpn_esi,
+};
 
 static inline bool
 bgp_alien_attr_wanted(uint id)

@@ -9,6 +9,7 @@
 
 #include "nest/bird.h"
 #include "lib/net.h"
+#include "lib/route.h"
 
 uint
 evpn_format(char *buf, uint blen, const net_addr_evpn *n)
@@ -39,3 +40,22 @@ evpn_format(char *buf, uint blen, const net_addr_evpn *n)
 
   bug("unknown EVPN type %d", n->subtype);
 }
+
+/* EVPN ESI eattr */
+
+static void
+ea_gen_evpn_esi_format(const eattr *a, byte *buf, uint size UNUSED)
+{
+  if (a->u.ad->length == 10)
+    bsprintf(buf, "%10b", a->u.ptr->data);
+  else
+    bsprintf(buf, "<invalid>");
+}
+
+struct ea_class ea_gen_evpn_esi = {
+  .name = "evpn_esi",
+  .legacy_name = "evpn_esi",
+  .type = T_BYTESTRING,
+  .format = ea_gen_evpn_esi_format,
+};
+
