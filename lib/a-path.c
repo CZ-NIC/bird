@@ -124,6 +124,7 @@ as_path_32to16(byte *dst, const byte *src, uint len)
     for (i = 0; i < n; i++)
     {
       put_u16(dst, get_u32(src));
+      //log("put as %i", get_u32(src));
       src += 4;
       dst += 2;
     }

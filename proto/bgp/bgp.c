@@ -1565,8 +1565,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     /* Update RA mode */
     if (c->add_path_tx)
       c->c.ra_mode = RA_ANY;
-    else if (c->cf->secondary){ log("SECONDARYYYYYYYYYYYYYYYYYY");
-      c->c.ra_mode = RA_ACCEPTED;}
+    else if (c->cf->secondary)
+      c->c.ra_mode = RA_ACCEPTED;
     else
       c->c.ra_mode = RA_OPTIMAL;
 
@@ -3098,7 +3098,6 @@ done:
 
 struct rte_owner_class bgp_rte_owner_class = {
   .get_route_info = 	bgp_get_route_info,
-  .rte_better =		bgp_rte_better,
   .rte_best = bgp_rte_best,
   .rte_mergable =	bgp_rte_mergable,
   .rte_igp_metric =	bgp_rte_igp_metric,
@@ -3624,12 +3623,6 @@ bgp_postconfig(struct proto_config *CF)
     if ((cc->gw_mode == GW_RECURSIVE) && cc->c.table->sorted)
       cf_error("BGP in recursive mode prohibits sorted table");
 
-    //if (cf->deterministic_med && cc->c.table->sorted)
-    //  cf_error("BGP with deterministic MED prohibits sorted table");
-
-    //if (cc->secondary && !cc->c.table->sorted)
-    //  cf_error("BGP with secondary option requires sorted table");
-
     if (cc->require_ext_next_hop && !cc->ext_next_hop)
       cf_warn("Extended next hop required but not enabled");
 
@@ -3782,7 +3775,6 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
   struct bgp_channel *c = (void *) C;
   struct bgp_channel_config *new = (void *) CC;
   struct bgp_channel_config *old = c->cf;
-  log("new->secondary %i != old->secondary %i", new->secondary, old->secondary);
 
   if ((new->secondary != old->secondary) ||
       (new->validate != old->validate) ||

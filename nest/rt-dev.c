@@ -141,6 +141,19 @@ dev_if_notify(struct proto *p, uint c, struct iface *iface)
   }
 }
 
+static int
+dev_rte_better(const rte *new, const rte *old)
+{
+  int sc = strcmp(new->src->owner->name, old->src->owner->name);
+  if (sc < 0)
+    return 0;
+  if (sc > 0)
+    return 1;
+
+  return new->src->private_id < old->src->private_id;
+}
+
+
 static void
 dev_postconfig(struct proto_config *CF)
 {
@@ -158,6 +171,10 @@ dev_postconfig(struct proto_config *CF)
   cf->ip6_channel = ip6 ?: ip6_sadr;
 }
 
+struct rte_owner_class dev_rte_owner_class = {
+  .rte_better = dev_rte_better,
+};
+
 static struct proto *
 dev_init(struct proto_config *CF)
 {
@@ -170,6 +187,7 @@ dev_init(struct proto_config *CF)
 
   P->iface_sub.if_notify = dev_if_notify;
   P->iface_sub.ifa_notify = dev_ifa_notify;
+  P->sources.class = &dev_rte_owner_class;
 
   return P;
 }

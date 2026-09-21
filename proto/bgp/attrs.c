@@ -3097,7 +3097,7 @@ rte_stale(const rte *r)
   return a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE);
 }
 
-int
+static int
 bgp_rte_better(const rte *new, const rte *old)
 {
   struct bgp_proto *new_bgp = bgp_rte_proto(new);
@@ -3357,7 +3357,7 @@ bgp_rte_best(const rte **routes, u32 count)
       { //maybe todo: it is possible to optimalise. (split bgp_rte_better or reduce iterating NULLs)
         if (routes[j] == NULL || !rte_is_valid(routes[j]))
           continue;
-        if (use_deterministic_med(routes[j]) && same_group(routes[j], lpref, lasn))
+        if (same_group(routes[j], lpref, lasn))
         {
           if (bgp_rte_better(routes[j], cur_rte))
             cur_rte = routes[j];

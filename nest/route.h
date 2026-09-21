@@ -206,7 +206,6 @@ struct rt_export_union {
     uint count_routes, count_exports;
     struct netindex *ni;
     rte *block;
-    u32 best_rte_idx;
     u64 *exports;
     char data[0];
   } *feed;

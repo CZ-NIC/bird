@@ -64,6 +64,7 @@ static inline rte rte_init_from(const rte *r)
 }
 
 int rte_same(const rte *, const rte *);
+rte *rte_select_best_from_feed(rte *rte_for_selection, uint count);
 
 struct rte_src {
   struct rte_src *next;			/* Hash chain */
