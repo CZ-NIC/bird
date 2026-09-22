@@ -59,3 +59,8 @@ struct ea_class ea_gen_evpn_esi = {
   .format = ea_gen_evpn_esi_format,
 };
 
+void
+evpn_init_global(void)
+{
+  ea_register_init(&ea_gen_evpn_esi);
+}

@@ -2813,6 +2813,9 @@ rta_init(void)
 
   /* ASPA providers */
   ea_register_init(&ea_gen_aspa_providers);
+
+  /* EVPN */
+  evpn_init_global();
 }
 
 /*

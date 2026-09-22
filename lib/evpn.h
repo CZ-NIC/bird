@@ -103,4 +103,10 @@ static inline bool mac_is_unicast(mac_addr a)
 union net_addr_evpn;
 uint evpn_format(char *buf, uint blen, const union net_addr_evpn *n);
 
+/*
+ *	Internal
+ */
+
+void evpn_init_global(void);
+
 #endif
