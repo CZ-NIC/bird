@@ -948,7 +948,6 @@
     FID_INTERPRET_BODY;
     {
       struct eattr *a;
-      struct adata *ad = NULL;
 
       switch (da->type) {
       case T_IFACE:
