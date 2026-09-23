@@ -667,7 +667,7 @@ build-netlab:
     - cd netlab
     - sudo ./stop
     - ulimit -f 1048576 # Protect the filesystem from overflowing by log bloat
-    - sudo ./runtest -s v3 -m check $TEST_NAME
+    - sudo ./runtest -s {{ netlab.dataset }} -m check $TEST_NAME
   after_script:
     - DIR=$(pwd)
     - cd $TOOLS_DIR/netlab
@@ -679,7 +679,7 @@ build-netlab:
     when: on_failure
     untracked: true
 
-{% for test in netlab %}
+{% for test in netlab.tests %}
 test-{{ test["name"] }}:
   <<: *test-base
   variables:
