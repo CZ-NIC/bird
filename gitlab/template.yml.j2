@@ -352,7 +352,7 @@ docker-{{ docker["name"] }}:
     - $MAKE obj/filter/trie_test
     - find / -name 'libatomic*'
     - ldconfig -p | grep atomic
-    - obj/filter/trie_test -ftvv
+    - ${CROSS_RUN} obj/filter/trie_test -ftvv
     - $MAKE VERBOSE=1 TEST_RETRY_VERBOSE=1 check
     # Build docs when tools are available
     - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
