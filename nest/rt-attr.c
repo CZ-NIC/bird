@@ -861,6 +861,13 @@ get_generic_attr(const eattr *a, byte **buf, int buflen)
       *buf += bsprintf(*buf, "evpn_esi: <invalid>");
     return GA_FULL;
 
+  case EA_INELIGIBILITY_REASON:
+    *buf += bsprintf(*buf, "Ineligibility reason");
+    *(*buf)++ = ':';
+    *(*buf)++ = ' ';
+    *buf += bsprintf(*buf, "%s", a->u.ptr->data);
+    return GA_FULL;
+
   default:
     return GA_UNKNOWN;
   }
