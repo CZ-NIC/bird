@@ -105,7 +105,7 @@ distros:
   {% for num, codename, crossarch in (
     (11, "bullseye", []),
     (12, "bookworm", ["mips64el"]),
-    (13, "trixie", ["arm64", "armel", "armhf", "riscv64"]),
+    (13, "trixie", ["arm64", "armhf", "riscv64"]),
     ("testing", "testing", ["arm64", "armhf", "riscv64"])
     ) -%}
   {% for arch in ('amd64', 'i386') -%}
@@ -124,6 +124,7 @@ distros:
 
 # These debian don't crossbuild. TODO fix that.
 # 12 -> ["arm64", "armel", "armhf"] ->  Error 127 from `make check` probably because qemu-user is somehow botched
+# 13 -> armel -> make check failure, libatomic.so not found (but is in the docker image, no idea why)
 # 12, 13, testing -> s390x -> does not install, impossible to replicate locally
 
   # Last 7 years of Ubuntu LTS
