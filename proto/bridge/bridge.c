@@ -457,21 +457,67 @@ kbr_rt_notify(struct proto *P, struct channel *c, net *net, rte *new, rte *old)
 }
 
 static inline int
-kbr_is_installed(struct channel *c, net *n)
+fdb_is_installed(struct channel *c, rte *r)
 {
-  return n->routes && bmap_test(&c->export_map, n->routes->id);
+  return rte_is_valid(r) && bmap_test(&c->export_map, r->id);
 }
 
 static void
-kbr_flush_routes(struct kbr_proto *p)
+kbr_flush_fdb(struct kbr_proto *p, const net_addr *n, rte *r)
+{
+  /*
+   * Stripped down version of kbr_rt_notify() with new == NULL. We cannot use
+   * the full one, because it contains hacks about finding the best route.
+   */
+
+#ifdef CONFIG_EVPN
+  if (p->vlan_filtering && (r->attrs->source == RTS_EVPN))
+  {
+    struct iface *i = r->attrs->nh.iface;
+    struct kbr_vlan *v = kbr_find_vlan(p, i->index, net_vlan_id(n));
+
+    if (!v || !v->active)
+      return;
+  }
+#endif
+
+  if (mac_nonzero(net_mac_addr(n)))
+  {
+    kbr_trace_out(p, n, NULL, r, 0);
+    kbr_replace_fdb(p, n, NULL, r, 0);
+  }
+
+  if (ipa_nonzero(r->attrs->nh.gw))
+  {
+    kbr_trace_out(p, n, NULL, r, 1);
+    kbr_replace_fdb(p, n, NULL, r, 1);
+  }
+}
+
+static void
+kbr_flush_fdbs(struct kbr_proto *p)
 {
   struct channel *c = p->p.main_channel;
 
   TRACE(D_EVENTS, "Flushing bridge routes");
-  FIB_WALK(&c->table->fib, net, n)
+
+  FIB_WALK(&c->table->fib, net, net)
   {
-    if (kbr_is_installed(c, n))
-      kbr_rt_notify(&p->p, c, n, NULL, n->routes);
+    const net_addr *n = net->n.addr;
+
+    if (mac_zero(net_mac_addr(n)))
+    {
+      /* For BUM routes, flush all tunnel entries */
+      for (rte *rt = net->routes; rt; rt = rt->next)
+	if (fdb_is_installed(c, rt))
+	  kbr_flush_fdb(p, n, rt);
+    }
+    else
+    {
+      /* For regular routes, flush only the best route */
+      if (fdb_is_installed(c, net->routes))
+	kbr_flush_fdb(p, n, net->routes);
+    }
   }
   FIB_WALK_END;
 }
@@ -863,7 +909,7 @@ kbr_shutdown(struct proto *P UNUSED)
   struct kbr_proto *p = (void *) P;
 
   if (p->synced)
-    kbr_flush_routes(p);
+    kbr_flush_fdbs(p);
 
   p->ready = false;
   p->synced = false;
