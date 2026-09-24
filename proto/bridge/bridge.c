@@ -810,16 +810,17 @@ kbr_prune_vlans1(struct kbr_proto *p)
  *	Bridge protocol glue
  */
 
+static void kbr_started(struct kbr_proto *p);
+static int kbr_shutdown(struct proto *P);
+
 static bool
 kbr_check_iface(struct kbr_proto *p, const struct iface *i)
 {
   ea_list *attrs = i->attrs ? i->attrs->eattrs : NULL;
 
+  /* Should not happen */
   if (!(i->flags & IF_UP))
-  {
-    log(L_ERR "%s: Interface %s is down", p->p.name, i->name);
     return false;
-  }
 
   u32 if_type = ea_get_int(attrs, EA_IFACE_TYPE, IF_TYPE_UNDEF);
   if (if_type != IF_TYPE_BRIDGE)
@@ -836,6 +837,20 @@ kbr_check_iface(struct kbr_proto *p, const struct iface *i)
   }
 
   return true;
+}
+
+static void
+kbr_if_notify(struct proto *P, unsigned flags, struct iface *iface)
+{
+  struct kbr_proto *p = (void *) P;
+
+  if (iface != p->bridge_dev)
+    return;
+
+  if ((p->p.proto_state == PS_START) && (flags & IF_CHANGE_UP) && kbr_check_iface(p, iface))
+    kbr_started(p);
+  else if ((p->p.proto_state == PS_UP) && (flags & IF_CHANGE_DOWN))
+    proto_notify_state(&p->p, kbr_shutdown(&p->p));
 }
 
 static void
@@ -860,6 +875,7 @@ kbr_init(struct proto_config *CF)
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
   P->rt_notify = kbr_rt_notify;
+  P->if_notify = kbr_if_notify;
   P->preexport = kbr_preexport;
   P->reload_routes = kbr_reload_routes;
   P->feed_end = kbr_feed_end;
@@ -891,16 +907,24 @@ kbr_start(struct proto *P)
   {
     HASH_INIT(p->vlan_hash, p->p.pool, 4);
     HASH_INIT(p->vlan_vni_hash, p->p.pool, 4);
+  }
 
+  return PS_START;
+}
+
+static void
+kbr_started(struct kbr_proto *p)
+{
+  if (!kbr_sys_start(p))
+    return;
+
+  proto_notify_state(&p->p, PS_UP);
+
+  if (p->vlan_filtering)
+  {
     p->vlan_sub = ps_subscriber_new(p->p.pool, kbr_vlan_req_notify, p);
     ps_subscribe_topic(p->vlan_sub, &vlan_requests, p->bridge_dev->name);
   }
-
-  kbr_check_iface(p, p->bridge_dev);
-
-  kbr_sys_start(p);
-
-  return PS_UP;
 }
 
 static int
@@ -914,7 +938,8 @@ kbr_shutdown(struct proto *P UNUSED)
   p->ready = false;
   p->synced = false;
 
-  kbr_sys_shutdown(p);
+  if (p->p.proto_state == PS_UP)
+    kbr_sys_shutdown(p);
 
   return PS_DOWN;
 }
