@@ -1153,15 +1153,6 @@ crossbuild-arm64-debian-13-amd64:
   variables:
     CROSSBUILD_ARCH: arm64
 
-crossbuild-armel-debian-13-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-13-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-13-amd64
-  variables:
-    CROSSBUILD_ARCH: armel
-
 crossbuild-armhf-debian-13-amd64:
   <<: *build-docker-linux-amd64
   needs:
@@ -1763,16 +1754,6 @@ crosspkg-arm64-debian-13-amd64:
   image: registry.nic.cz/labs/bird:debian-13-amd64
   variables:
     CROSSBUILD_ARCH: arm64
-
-crosspkg-armel-debian-13-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: crossbuild-armel-debian-13-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-13-amd64
-  variables:
-    CROSSBUILD_ARCH: armel
 
 crosspkg-armhf-debian-13-amd64:
   <<: *pkg-deb
@@ -2376,13 +2357,6 @@ crossinstall-arm64-debian-13-amd64:
   image: registry.nic.cz/labs/bird:debian-13-amd64
   variables:
     CROSSBUILD_ARCH: arm64
-crossinstall-armel-debian-13-amd64:
-  <<: *install-deb
-  needs:
-    - job: crosspkg-armel-debian-13-amd64
-  image: registry.nic.cz/labs/bird:debian-13-amd64
-  variables:
-    CROSSBUILD_ARCH: armel
 crossinstall-armhf-debian-13-amd64:
   <<: *install-deb
   needs:
