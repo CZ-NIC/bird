@@ -377,6 +377,23 @@ keyword is <cf/eth/.
 forwarding. MPLS-aware routing protocols produce both labeled IP routes and
 corresponding MPLS routes. Configuration keyword is <cf/mpls/.
 
+<sect1>Route Target Constraint routes
+<label id="rtfilter-routes">
+
+<p>RT constraint routes are used to signal peers what routes do we want to receive
+updates of. RTC routes contain source ASN and route target (RT) as an extended
+community. Peers would then send us only route updates of those routes, whose RT
+matches the one in rtfilter route. Configuration keyword is <cf/rtc/. RTC route
+has following format: <cf/rtc (type, ASN or IPv4, value) as src_asn/. Types are
+<cf/rt-as2/, <cf/rt-as4/ and <cf/rt-ip4/. It is possible to write just <cf/rt/
+for brevity. Asterisk <cf/*/ works as a wildcard, matching all values in
+particular field. For example, <cf/rtc (rt, 200, *)/ matches all RTs with ASN 200.
+Route target can be also defined as prefix. In that case, length of prefix has
+to be specified as well. If the end of prefix lies inside one of RT fields, prefix
+length is specified relative to this particular field, not the whole RTC prefix.
+For example, <cf>/rtc (rt, 100, 0xff00/8)</cf> matches all RTCs with ASN 100 and
+values with prefix <cf/0xff/.
+
 <itemize>
 	<item>(PK) MPLS label
 	<item>Route next hops
@@ -1830,6 +1847,9 @@ in the foot).
 	<cf/NET_NEIGHBOR/ holds a single IP address and an interface index.
 	The IP address can be accessed by operator <cf/.ip/, while the access
 	to the interface index is not implemented.
+
+	<cf/NET_RTC/ holds source ASN and route target. ASN can be accessed by
+	operator <cf/.asn/, route target by operator <cf/.rt/.
 
 	<tag><label id="type-rd"><label id="type-vpnrd">rd</tag>
 	This is a route distinguisher according to <rfc id="4364">. There are
@@ -3836,6 +3856,7 @@ together with their appropriate channels follows.
 @ <cf/flow6/          | <cf/flow6/         | ---                     | 2        | 133
 @ <cf/evpn/           | <cf/evpn/          | <cf/ipv4/ and <cf/ipv6/ | 25       | 70
 @ <cf/neighbors/      | <cf/neighbor/      | ---                     | ---      | ---
+@ <cf/rtc/	      | <cf/rtc/	   | ---		     | 1	| 132
 </tabular>
 </table>
 
