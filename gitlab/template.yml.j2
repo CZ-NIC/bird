@@ -331,8 +331,9 @@ docker-{{ docker["name"] }}:
         if grep -qF "BIRD version ${STABLE_VERSION}+branch" version-expected; then
           true
         else
-          echo -n "Commit $CI_COMMIT_SHA message $CI_COMMIT_MESSAGE expects version "
+          echo -n "Commit $CI_COMMIT_SHA message $CI_COMMIT_MESSAGE claims version "
           cat version-expected
+          echo "Expected version ${STABLE_VERSION}+branch... instead"
           exit 1
         fi
       fi
