@@ -529,6 +529,7 @@ nexthop_compare_qsort(const void *x, const void *y)
 struct nexthop_adata *
 nexthop_merge(struct nexthop_adata *xin, struct nexthop_adata *yin, int max, linpool *lp)
 {
+  log("nexthop_merge");
   uint outlen = ADATA_SIZE(xin->ad.length) + ADATA_SIZE(yin->ad.length);
   struct nexthop_adata *out = lp_alloc(lp, outlen);
   out->ad.length = outlen - sizeof (struct adata);

@@ -670,9 +670,9 @@ struct channel {
   struct rt_import_request in_req;	/* Table import connection */
   struct rt_export_request out_req;	/* Table export connection */
   event out_event;			/* Table export event */
-  struct rt_export_request alt_req;	/* Alternative export request */
-  event alt_event;
-  int (*alt_export)(const struct rt_prefilter *, const net_addr *);	/* Use the alt export for this net */
+  //struct rt_export_request alt_req;	/* Alternative export request */
+  //event alt_event;
+  //int (*alt_export)(const struct rt_prefilter *, const net_addr *);	/* Use the alt export for this net */
   bool one_refeed_seen;			/* Synchronize both refeeds */
   pool *export_pool;			/* Pool for export auxiliaries */
 

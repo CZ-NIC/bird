@@ -1232,19 +1232,14 @@ rte_feed_obtain(struct rtable_reading *tr, net *n, const rte **feed, uint count)
 }
 #endif
 
-static u32
+static void
 rte_feed_obtain_copy(struct rtable_reading *tr, net *n, rte *feed, uint count)
 {
-  const rte *best = NET_BEST_ROUTE(n);
-  u32 best_rte_idx = ~0;
   uint i = 0;
   NET_READ_WALK_ROUTES(n, ep, e)
   {
     if (i >= count)
       RT_READ_RETRY(tr);
-
-    if (&e->rte == best)
-      best_rte_idx = i;
 
     feed[i++] = e->rte;
     ea_free_later(ea_ref(e->rte.attrs));
@@ -1253,8 +1248,6 @@ rte_feed_obtain_copy(struct rtable_reading *tr, net *n, rte *feed, uint count)
 
   if (i != count)
     RT_READ_RETRY(tr);
-
-  return best_rte_idx;
 }
 
 /**
@@ -1601,11 +1594,6 @@ channel_notify_optimal(void *_channel)
 
   if (c->ra_mode == RA_OPTIMAL)
     channel_notify_optimal_req(c, &c->out_req);
-  else
-    ASSERT_DIE(c->alt_export);
-
-  if (c->alt_mode == RA_OPTIMAL)
-    channel_notify_optimal_req(c, &c->alt_req);
 }
 
 static void
@@ -1764,11 +1752,6 @@ channel_notify_any(void *_channel)
 
   if (c->ra_mode == RA_ANY)
     channel_notify_any_req(c, &c->out_req);
-  else
-    ASSERT_DIE(c->alt_export);
-
-  if (c->alt_mode == RA_ANY)
-    channel_notify_any_req(c, &c->alt_req);
 }
 
 #if 0
@@ -1864,8 +1847,6 @@ void
 channel_notify_accepted(void *_channel)
 {
   struct channel *c = _channel;
-  if (c->alt_export)
-    bug("Channel accepted mode does not support alt_export");
 
   RT_EXPORT_WALK(&c->out_req, u)
   {
@@ -1901,13 +1882,12 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
 
   // struct proto *p = c->proto;
   struct nexthop_adata *nhs = NULL;
-  rte *best = &feed->block[feed->best_rte_idx]; /* Actually the new best route, but block[0] will need to be rewritten to load best */
+  log("rt_export_merged" );
 
-  if (best == NULL)
-  {
-    ASSERT_DIE(c->alt_export);
+  rte *best = rte_select_best_from_feed(feed->block, feed->count_routes);
+
+  if (!best)
     return NULL;
-  }
 
   /* First route is obsolete */
   if (best->flags & REF_OBSOLETE)
@@ -1932,7 +1912,7 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
   /* Unreachable routes can't be merged */
   if (!rte_is_reachable(best))
     return best;
-
+log("rt_export_merged checked");
   for (uint i = 1; i < feed->count_routes; i++)
   {
     rte *r = &feed->block[i];
@@ -2011,13 +1991,13 @@ void
 channel_notify_merged(void *_channel)
 {
   struct channel *c = _channel;
-  struct rt_export_request *req;
+  struct rt_export_request *req = &c->out_req;
 
   /* We need to take both all and best reqs. If it is all and we do not have best, we can wait for best*/
-  if (c->alt_export)
-    req = &c->alt_req;
-  else
-    req = &c->out_req;
+  //if (c->alt_export)
+    //req = &c->alt_req; // TODO: altreq vzpustit i z evpn - best kdyztak prepocitat
+  //else
+  //  req = &c->out_req;
 
   RT_EXPORT_WALK(req, u)
   {
@@ -2034,21 +2014,6 @@ channel_notify_merged(void *_channel)
       case RT_EXPORT_UPDATE:
 	{
 	  struct rt_export_feed *f = rt_net_feed(c->table, u->update->new ? u->update->new->net : u->update->old->net, SKIP_BACK(struct rt_pending_export, it, u->update));
-
-          if (c->alt_export)
-          {
-            rte *best = &f->block[f->best_rte_idx];
-            if (best == NULL)
-              return; /* No best route, nothing to recalculate */
-
-            const rte *new = u->update->new;
-            const rte *old = u->update->old;
-
-            if (rte_same(best, old))
-              break; /* New was not selected yet, waiting for out_req. */
-            if (! ((!new || rte_mergable(best, new)) && (!old || rte_mergable(best, old))))
-              break; /* New nor old affect the best route, nothing to do. */
-          }
 
 	  rt_notify_merged(c, f);
 	  for (uint i=0; i<f->count_exports; i++)
@@ -2393,6 +2358,18 @@ rte_better(const rte ** best_rte_preselection, const rte *new, const rte *old)
   return OLD_RTE_BETTER;
 }
 
+rte *
+rte_select_best_from_feed(rte *rte_for_selection, uint count)
+{
+  const rte * selection[count];
+
+  for (uint i = 0; i < count; i++)
+    selection[i] = &rte_for_selection[i];
+  
+  return (rte *) rte_select_best(selection, count);
+}
+
+
 static const rte *
 rte_select_best(const rte **rte_for_selection, uint count)
 {
@@ -2663,7 +2640,7 @@ rte_recalculate_best_for_net(rtable *table, net *nets, const struct netindex *ni
   }
   rcu_read_unlock();
 
-  /* This is the ugly part.the tab is locked*/
+  /* This is the ugly part. The tab is locked */
   const rte *best = rte_select_best(rte_for_selection, stored_count);
 
 #if 0
@@ -3078,10 +3055,9 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, struct bmap *seen, bool (*p
     }
 
     feed = rt_alloc_feed(rcnt+ocnt, ecnt);
-    feed->best_rte_idx = ~0;
 
     if (rcnt)
-      feed->best_rte_idx = rte_feed_obtain_copy(tr, n, feed->block, rcnt);
+      rte_feed_obtain_copy(tr, n, feed->block, rcnt);
 
     if (ecnt)
     {
@@ -3109,7 +3085,7 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, struct bmap *seen, bool (*p
       ASSERT_DIE(e == ecnt);
     }
 
-    feed->ni = NET_TO_INDEX(feed->block[0].net);
+    feed->ni = NET_TO_INDEX(rte_select_best_from_feed(feed->block, feed->count_routes)->net);
   }
 
   /* Check that it indeed didn't change and the last export is still the same. */
@@ -3222,15 +3198,11 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struc
   uint bpos = 0;
   if (best)
   {
-    feed->best_rte_idx = bpos;
     feed->block[bpos++] = best->rte; //maybe todo
     feed->ni = NET_TO_INDEX(best->rte.net);
   }
   else
-  {
-    feed->best_rte_idx = ~0;
     feed->ni = NET_TO_INDEX((first->it.new ?: first->it.old)->net);
-  }
 
   if (ecnt)
   {
@@ -3542,6 +3514,7 @@ rt_dump_hooks_all(struct dump_request *dreq)
 static inline void
 rt_schedule_nhu(struct rtable_private *tab)
 {
+        log("schedule next hop event");
   if (tab->nhu_corked)
   {
     if (!(tab->nhu_corked & NHU_SCHEDULED))
@@ -3656,7 +3629,7 @@ rt_flowspec_export(void *_link)
 
       case RT_EXPORT_FEED:
 	if (u->feed->count_routes)
-	  n = u->feed->block[0].net;
+          n = rte_select_best_from_feed(u->feed->block, u->feed->count_routes)->net;
 	break;
 
       case RT_EXPORT_UPDATE:
@@ -4636,6 +4609,7 @@ rta_apply_hostentry(ea_list **to, struct hostentry_adata *head)
 static inline int
 rt_next_hop_update_rte(const rte *old, rte *new)
 {
+        log("rt_next_hop_update_rte");
   eattr *hev = ea_find(old->attrs, &ea_gen_hostentry_version);
   if (!hev)
     return 0;
@@ -4649,6 +4623,7 @@ rt_next_hop_update_rte(const rte *old, rte *new)
   if (current_version == last_version)
     return 0;
 
+log("rt_next_hop_update_rte checked");
   *new = *old;
   new->attrs = ea_strip_to(new->attrs, BIT32_ALL(EALS_PREIMPORT, EALS_FILTERED));
   rta_apply_hostentry(&new->attrs, head);
@@ -4851,6 +4826,7 @@ rt_next_hop_update_rte_store(struct rtable_private *tab, net *n, struct netindex
         struct rte_storage *prev, struct rte_storage *old, rte *new)
 {
   new->lastmod = current_time();
+  log("rt_next_hop_update_rte_store net %N", ni->addr);
   new->id = hmap_first_zero(&tab->id_map);
   hmap_set(&tab->id_map, new->id);
   struct rte_storage *new_stored = rte_store(new, ni, tab);
@@ -4874,6 +4850,7 @@ static inline void
 rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
 {
   int is_flow = net_val_match(tab->addr_type, NB_FLOW);
+  log("rt_next_hop_update_net ni %N", ni->addr);
 
   const rte *old_best = NET_BEST_ROUTE(n);
   if (!old_best)
@@ -4883,6 +4860,7 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
     return;
 
   struct rte_storage *prev = NULL;
+  log("rt_next_hop_update_net checked");
 
   if (is_flow)
   {
@@ -4911,6 +4889,7 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
 static void
 rt_nhu_uncork(callback *cb)
 {
+        log("rt_nhu_uncork");
   RT_LOCKED(SKIP_BACK(rtable, priv.nhu_uncork.cb, cb), tab)
   {
     ASSERT_DIE(tab->nhu_corked);
@@ -4930,6 +4909,7 @@ static void
 rt_next_hop_update(void *_tab)
 {
   RT_LOCK((rtable *) _tab, tab);
+  log("rt_next_hop_update");
 
   ASSERT_DIE(birdloop_inside(tab->loop));
 
@@ -4955,6 +4935,7 @@ rt_next_hop_update(void *_tab)
     tab->nhu_state = 0;
     return;
   }
+  log("rt_next_hop_update checked");
 
   /* Initialize a new run */
   if (tab->nhu_state == NHU_SCHEDULED)
@@ -5502,7 +5483,7 @@ hc_notify_export(void *_hc)
 
       case RT_EXPORT_FEED:
 	if (u->feed->count_routes)
-	  n = u->feed->block[0].net;
+	  n = rte_select_best_from_feed(u->feed->block, u->feed->count_routes)->net;
 	break;
 
       case RT_EXPORT_UPDATE:
@@ -5856,22 +5837,34 @@ rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
 rte *
 krt_export_net(struct channel *c, const net_addr *a, linpool *lp)
 {
-  ASSERT_DIE(!c->alt_export);
 
   if (c->ra_mode == RA_MERGED)
   {
     struct rt_export_feed *feed = rt_net_feed(c->table, a, NULL);
+    log("krt_export_net c->ra_mode == RA_MERGED feed %p couint %i", feed, feed? feed->count_routes:0);
     if (!feed || !feed->count_routes)
       return NULL;
 
-    if (!bmap_test(&c->export_accepted_map, feed->block[0].id))
+    bool found_valid = false;
+    for (uint i = 0; i < feed->count_routes; i++)
+    {
+      if (bmap_test(&c->export_accepted_map, feed->block[i].id))
+      {
+        found_valid = true;
+        break;
+      }
+    }
+
+    if (!found_valid)
       return NULL;
 
+    log("go to merge");
     return rt_export_merged(c, feed, lp, 1);
   }
 
   static _Thread_local rte best;
   best = rt_net_best(c->table, a);
+  log("krt_export_net best %p", best);
 
   if (!best.attrs)
     return NULL;

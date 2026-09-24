@@ -226,15 +226,16 @@ rt_show_net(struct rt_show_data *d, const struct rt_export_feed *feed)
   int pass = 0;
 
   /* First we need to display the best route */
-  if (feed->best_rte_idx != (u32) ~0)
-    rt_show_net_rte(d, feed, &feed->block[feed->best_rte_idx], &first,
+  rte *best = rte_select_best_from_feed(feed->block, feed->count_routes);
+  if (best)
+    rt_show_net_rte(d, feed, best, &first,
         &first_show, &last_label, &pass, ia, sizeof(ia), 0);
 
   /* Then display all others */
   if (!d->primary_only)
     for (uint i = 0; i < feed->count_routes; i++)
     {
-      if (i != feed->best_rte_idx)
+      if (&feed->block[i] != best)
 	rt_show_net_rte(d, feed, &feed->block[i], &first,
 	    &first_show, &last_label, &pass, ia, sizeof(ia), 1);
     }

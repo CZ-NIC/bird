@@ -410,6 +410,7 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
   if (p->sync_state == KPS_INIT)
     return;
 
+  log("got route");
   rte *new = NULL;
   e->pflags = 0;
 
