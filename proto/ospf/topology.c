@@ -283,8 +283,15 @@ ospf_originate_lsa(struct ospf_proto *p, struct ospf_new_lsa *lsa)
 {
   struct top_hash_entry *en = NULL;
   void *lsa_body = p->lsab;
-  u16 lsa_blen = p->lsab_used;
-  u16 lsa_length = sizeof(struct ospf_lsa_header) + lsa_blen;
+  uint lsa_blen = p->lsab_used;
+  uint lsa_length = sizeof(struct ospf_lsa_header) + lsa_blen;
+
+  if (lsa_length > 0xffff)
+  {
+    log(L_ERR "%s: Failed to originate LSA (Type: %04x, Id: %R, Rt: %R) - too large (%u)",
+	p->p.name, lsa->type, lsa->id, p->router_id, lsa_length);
+    goto drop;
+  }
 
   /* RFC 3623 2 (1) - do not originate topology LSAs during graceful restart */
   if (p->gr_recovery && (LSA_FUNCTION(lsa->type) <= LSA_FUNCTION(LSA_T_NSSA)))
