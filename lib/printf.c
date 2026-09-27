@@ -259,8 +259,11 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			net_addr *n = va_arg(args, net_addr *);
 			if (field_width == 1)
 				field_width = net_max_text_length[n->type];
-			net_format(n, ipbuf, sizeof(ipbuf));
-			s = ipbuf;
+
+			/* We do not propagate -1 in case of net_format() failure as
+			   it is internal failure, not insufficient output buffer. */
+			i = net_format(n, ipbuf, sizeof(ipbuf));
+			s = (i >= 0) ? ipbuf : "<net-format-fail>";
 			goto str;
 			}
 		case 's':
