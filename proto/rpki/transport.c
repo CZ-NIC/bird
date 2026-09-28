@@ -125,6 +125,9 @@ rpki_tr_close(struct rpki_tr_sock *tr)
     sk_close(tr->sk);
     tr->sk = NULL;
   }
+
+  /* Detect socket close during rx hook */
+  tr->sk_closed = true;
 }
 
 /**
