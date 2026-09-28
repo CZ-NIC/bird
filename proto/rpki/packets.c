@@ -1062,6 +1062,9 @@ rpki_rx_hook(struct birdsock *sk, uint size)
 
   DBG("rx hook got %u bytes \n", size);
 
+  /* Detect socket close during packet processing */
+  cache->tr_sock->sk_closed = false;
+
   while (end >= pkt_start + RPKI_PDU_HEADER_LEN)
   {
     struct pdu_header *pdu = (void *) pkt_start;
@@ -1079,7 +1082,7 @@ rpki_rx_hook(struct birdsock *sk, uint size)
     rpki_rx_packet(cache, pdu);
 
     /* It is possible that bird socket was freed/closed */
-    if (p->p.proto_state == PS_DOWN || sk != cache->tr_sock->sk)
+    if (p->p.proto_state == PS_DOWN || cache->tr_sock->sk_closed)
       return 0;
 
     pkt_start += pdu_size;
