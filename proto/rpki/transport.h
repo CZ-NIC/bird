@@ -42,6 +42,7 @@ struct rpki_tr_sock {
   int (*open_fp)(struct rpki_tr_sock *);	  /* Function that establishes the socket connection */
   const char *(*ident_fp)(struct rpki_tr_sock *); /* Function that returns an identifier for the socket endpoint */
   const char *ident;			/* Internal. Use ident_fp() hook instead of this pointer */
+  bool sk_closed;			/* Socket close detection flag */
 };
 
 int rpki_tr_open(struct rpki_tr_sock *tr);
