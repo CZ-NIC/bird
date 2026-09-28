@@ -523,8 +523,10 @@ cf_include(char *arg, int alen)
 
       if (stat(fname, &fs) < 0)
 	{
+	  int saved_errno = errno;
+	  char *saved_fname = cfg_strdup(fname);
 	  globfree(&g);
-	  cf_error("Unable to stat included file %s: %m", fname);
+	  cf_error("Unable to stat included file %s: %M", saved_fname, saved_errno);
 	}
 
       if (fs.st_mode & S_IFDIR)
