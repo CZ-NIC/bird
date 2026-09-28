@@ -303,7 +303,7 @@ radv_prune_neighbors(struct radv_proto *p)
       if (expires <= now)
       {
 	/* Neighbor has expired, add to withdrawal list */
-	net_addr_nbr *nbr = (net_addr_nbr *) e->net;
+	net_addr_nbr *nbr = (net_addr_nbr *) n->n.addr;
 
 	struct expired_nbr *ep = tmp_allocz(sizeof(struct expired_nbr));
 	net_copy_nbr(&ep->n, nbr);
