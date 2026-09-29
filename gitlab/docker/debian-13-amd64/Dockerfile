@@ -7,6 +7,7 @@ FROM amd64/debian:trixie-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN dpkg --add-architecture arm64
+RUN dpkg --add-architecture armel
 RUN dpkg --add-architecture armhf
 RUN dpkg --add-architecture riscv64
 RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
@@ -23,6 +24,10 @@ RUN apt-get -y --no-install-recommends install \
 	crossbuild-essential-arm64 \
 	libreadline-dev:arm64 \
 	ncurses-dev:arm64 \
+	crossbuild-essential-armel \
+	libreadline-dev:armel \
+	ncurses-dev:armel \
+	libatomic1:armel \
 	crossbuild-essential-armhf \
 	libreadline-dev:armhf \
 	ncurses-dev:armhf \
