@@ -20,7 +20,7 @@ if git status --porcelain | grep -q '^...VERSION$'; then
 fi
 
 # If clean, check VERSION file updates in the current commit
-if [ $(git status --porcelain -uno | wc -l) = "0" ] && [ $(git show -- VERSION | wc -l) != "0" ]; then
+if [ $(git status --porcelain -uno | wc -l) = "0" ] && [ $(git log HEAD^..HEAD -- VERSION | wc -l) != "0" ]; then
   echo $RELEASE_VERSION
   exit 0
 fi
