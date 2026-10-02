@@ -1,3 +1,12 @@
+Version 2.17.7 (2026-10-02)
+  o OSPF: Fix LSA length overflow
+  o RAdv: Add hop limit validation
+  o RPKI: Fix socket close detection during rx_hook
+  o Tools: Fix version script for Git 2.55+
+  o Conf: Fix use-after-free in cf_include() error path
+  o Lib: Fix bvsnprintf() on too long net_addr values
+  o Lib: Fix endptr in bstrtoul16()
+
 Version 2.17.6 (2026-07-30)
   o BGP: Fix stack buffer overflow in Flowspec NLRI decoder
   o BGP: Minor improvements in Flowspec parsing
