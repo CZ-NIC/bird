@@ -189,7 +189,7 @@ t_rcu_basic(void)
       ASSERT_DIE(atomic_load_explicit(&ball[w][r].next, memory_order_relaxed) == (void *) 0xd8d8d8d8d8d8d8d8);
     }
 
-  return 1;
+  return *((int *) NULL);
 }
 
 int main(int argc, char **argv)
