@@ -3082,6 +3082,7 @@ protocol bgp [<name>] {
 		require extended next hop <switch>;
 		add paths <switch>|rx|tx;
 		require add paths <switch>;
+		ignore otc <switch>;
 		aigp <switch>|originate;
 		cost <number>;
 		graceful restart <switch>;
@@ -4049,6 +4050,46 @@ allowed in dynamic BGP instances (those configured with <cf/neighbor range/).
 	established. Announced directions in the capability must be compatible
 	with locally configured directions. E.g., If <cf/add path tx/ is
 	configured locally, then the neighbor capability must announce RX.
+	Default: off.
+
+	<tag><label id="bgp-ignore-otc">ignore otc <m/switch/</tag>
+	When <ref id="bgp-local-role" name="BGP roles"> are set, BIRD automatically
+	drops leaked routes, as mandated by <rfc id="9234">. This option allows the
+	channel to accept these routes, so that the user may do additional processing
+	by the filter engine before rejecting. Specifically, this option may be useful
+	when accompanied with <ref id="proto-import-keep-filtered" name="keeping the
+	filtered routes"> for inspection.
+
+	When this option is on, it's the user's responsibility to actually
+        filter the leaked routes out, for which the following configuration
+	snippet may be handy.
+
+<code>
+attribute int wrong_otc_provider;
+attribute int wrong_otc_peer;
+
+function otc_provider_or_rss() -> bool
+{
+  if defined(bgp_otc) then {
+    wrong_otc_provider = 1;
+    return false;
+  }
+  else return true;
+}
+
+function otc_peer(int their_as) -> bool
+{
+  if defined(bgp_otc) && bgp_otc != their_as then {
+    wrong_otc_peer = bgp_otc;
+    return false;
+  }
+  else return true;
+}
+</code>
+
+	The sole existence of this option knowingly violates the requirements
+	stipulated in <rfc id="9234">, Section&nbsp;5, last sentence.
+	Do not set this option unless you really know what you are doing.
 	Default: off.
 
 	<tag><label id="bgp-aigp">aigp <m/switch/|originate</tag>
