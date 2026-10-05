@@ -23,14 +23,14 @@ threshold = 0.80    # commit title similarity required to group commits (0–1)
 by_author = true   # also require the same author
 
 [beginnings]
-"master"	= "64158b0150d7a8af50efe7495d0e82d235e5eb82"
-"stable-v2.17"	= "v2.17.6"
-"stable-v2.18"	= "v2.18.3"
-"stable-v2.19"	= "v2.19.2"
-"thread-next"	= "06ca9bf5c588df6c0587eb64bd375eb0ade526ab"
-"stable-v3.1"	= "v3.1.8"
-"stable-v3.2"	= "v3.2.3"
-"stable-v3.3"	= "v3.3.2"
+"master"	= "1f5d2f4fd60e2f5ca1b2ba87852c56b5c0c78c93"
+"stable-v2.17"	= "v2.17.7"
+"stable-v2.18"	= "v2.18.4"
+"stable-v2.19"	= "v2.19.3"
+"thread-next"	= "5bed739703b640fc5e7a22b6c39bbe86ba98d3da"
+"stable-v3.1"	= "v3.1.9"
+"stable-v3.2"	= "v3.2.4"
+"stable-v3.3"	= "v3.3.3"
 
 [filter.hide_if]
 Target = [ "minor" ]
