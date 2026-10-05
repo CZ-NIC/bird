@@ -1800,12 +1800,15 @@ bgp_finish_attrs(struct bgp_parse_state *s, ea_list **to)
     eattr *e = bgp_find_attr(*to, BA_ONLY_TO_CUSTOMER);
 
     /* Reject routes from downstream if they are leaked */
-    if (e && (p->cf->local_role == BGP_ROLE_PROVIDER ||
-	      p->cf->local_role == BGP_ROLE_RS_SERVER))
+    if (e && !s->channel->cf->ignore_otc
+	&& (p->cf->local_role == BGP_ROLE_PROVIDER ||
+	  p->cf->local_role == BGP_ROLE_RS_SERVER))
       WITHDRAW("Route leak detected - OTC attribute from downstream");
 
     /* Reject routes from peers if they are leaked */
-    if (e && (p->cf->local_role == BGP_ROLE_PEER) && (e->u.data != p->cf->remote_as))
+    if (e && !s->channel->cf->ignore_otc
+	&& (p->cf->local_role == BGP_ROLE_PEER)
+	&& (e->u.data != p->cf->remote_as))
       WITHDRAW("Route leak detected - OTC attribute with mismatched ASN (%u)",
 	       (uint) e->u.data);
 
