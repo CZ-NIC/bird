@@ -3252,6 +3252,7 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
 
   if ((new->gw_mode != old->gw_mode) ||
       (new->next_hop_prefer != old->next_hop_prefer) ||
+      (new->ignore_otc != old->ignore_otc) ||
       (new->aigp != old->aigp) ||
       (new->cost != old->cost) ||
       (new->c.preference != old->c.preference))
