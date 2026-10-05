@@ -1882,7 +1882,6 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
 
   // struct proto *p = c->proto;
   struct nexthop_adata *nhs = NULL;
-  log("rt_export_merged" );
 
   rte *best = rte_select_best_from_feed(feed->block, feed->count_routes);
 
@@ -1912,8 +1911,7 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
   /* Unreachable routes can't be merged */
   if (!rte_is_reachable(best))
     return best;
-log("rt_export_merged checked");
-  for (uint i = 1; i < feed->count_routes; i++)
+  for (uint i = 0; i < feed->count_routes; i++)
   {
     rte *r = &feed->block[i];
 
@@ -2336,8 +2334,12 @@ rte_better(const rte ** best_rte_preselection, const rte *new, const rte *old)
   if (!rte_is_valid(old))
     return NEW_RTE_BETTER;
 
+  log("rte_better %N %N", new->net, old->net);
   u32 np = rt_get_preference(new);
   u32 op = rt_get_preference(old);
+
+  if(np!= op)
+    log("pref");
 
   if (np > op)
     return NEW_RTE_BETTER;
@@ -2351,10 +2353,19 @@ rte_better(const rte ** best_rte_preselection, const rte *new, const rte *old)
        *  have the same preference, try to break the tie by comparing addresses. Not too
        *  useful, but keeps the ordering of routes unambiguous.
        */
+      log("class");
       return old->src->owner->class > new->src->owner->class;
   }
-  if (best_rte_preselection[0]->src->owner->class->rte_best)
-    return CANT_CHOOSE_BETTER; /* decision is on protocol*/
+
+  int (*better)(const rte *, const rte *);
+  if (better = new->src->owner->class->rte_better){
+       // log("(better = new->src->owner->class->rte_better %s", new->src->owner->name);
+    return better(new, old);} /* Protocol is able to decide right now */
+
+  if (best_rte_preselection[0]->src->owner->class->rte_best){log("cant choose");
+    return CANT_CHOOSE_BETTER;} /* Protocol needs more context to decide (bgp MED) */
+
+  //log("noooooo");
   return OLD_RTE_BETTER;
 }
 
@@ -2365,7 +2376,7 @@ rte_select_best_from_feed(rte *rte_for_selection, uint count)
 
   for (uint i = 0; i < count; i++)
     selection[i] = &rte_for_selection[i];
-  
+
   return (rte *) rte_select_best(selection, count);
 }
 
@@ -2377,12 +2388,11 @@ rte_select_best(const rte **rte_for_selection, uint count)
   * We can not allways determine the best route
   * in the first walk (bgp MED).
   */
-  u32 best_rte_sel_size = 32;
-  const rte ** best_rte_preselection = tmp_alloc(sizeof(rte *)*32);
+  const rte ** best_rte_preselection = tmp_alloc(sizeof(rte *)*count);
 
   uint idx = 0; /* First free index in best_rte_preselection */
   const rte *old = NULL;
-  const rte **resize_field;
+  log("rte_select_best ");
 
   for (size_t i = 0; i < count; i++)
   {
@@ -2398,14 +2408,6 @@ rte_select_best(const rte **rte_for_selection, uint count)
       case CANT_CHOOSE_BETTER:
         /* Right now we cant decide between new route and already preselected ones.
          * Lets add it to the list. */
-        if (best_rte_sel_size <= idx)
-        {
-          resize_field = tmp_alloc(sizeof(rte *)*idx*2);
-          best_rte_sel_size = idx * 2;
-          memcpy(resize_field, best_rte_preselection, sizeof(const rte *) * idx);
-          best_rte_preselection = resize_field;
-        }
-
         best_rte_preselection[idx] = e;
         idx++;
         break;
@@ -3085,7 +3087,11 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, struct bmap *seen, bool (*p
       ASSERT_DIE(e == ecnt);
     }
 
-    feed->ni = NET_TO_INDEX(rte_select_best_from_feed(feed->block, feed->count_routes)->net);
+    rte * best_rte = rte_select_best_from_feed(feed->block, feed->count_routes);
+    if (best_rte == NULL)
+    /* all routes in feed are invalid */
+      return NULL;
+    feed->ni = NET_TO_INDEX(best_rte->net);
   }
 
   /* Check that it indeed didn't change and the last export is still the same. */
@@ -3514,7 +3520,6 @@ rt_dump_hooks_all(struct dump_request *dreq)
 static inline void
 rt_schedule_nhu(struct rtable_private *tab)
 {
-        log("schedule next hop event");
   if (tab->nhu_corked)
   {
     if (!(tab->nhu_corked & NHU_SCHEDULED))
@@ -4609,7 +4614,6 @@ rta_apply_hostentry(ea_list **to, struct hostentry_adata *head)
 static inline int
 rt_next_hop_update_rte(const rte *old, rte *new)
 {
-        log("rt_next_hop_update_rte");
   eattr *hev = ea_find(old->attrs, &ea_gen_hostentry_version);
   if (!hev)
     return 0;
@@ -4623,7 +4627,6 @@ rt_next_hop_update_rte(const rte *old, rte *new)
   if (current_version == last_version)
     return 0;
 
-log("rt_next_hop_update_rte checked");
   *new = *old;
   new->attrs = ea_strip_to(new->attrs, BIT32_ALL(EALS_PREIMPORT, EALS_FILTERED));
   rta_apply_hostentry(&new->attrs, head);
@@ -4826,7 +4829,6 @@ rt_next_hop_update_rte_store(struct rtable_private *tab, net *n, struct netindex
         struct rte_storage *prev, struct rte_storage *old, rte *new)
 {
   new->lastmod = current_time();
-  log("rt_next_hop_update_rte_store net %N", ni->addr);
   new->id = hmap_first_zero(&tab->id_map);
   hmap_set(&tab->id_map, new->id);
   struct rte_storage *new_stored = rte_store(new, ni, tab);
@@ -4850,7 +4852,6 @@ static inline void
 rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
 {
   int is_flow = net_val_match(tab->addr_type, NB_FLOW);
-  log("rt_next_hop_update_net ni %N", ni->addr);
 
   const rte *old_best = NET_BEST_ROUTE(n);
   if (!old_best)
@@ -4860,7 +4861,6 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
     return;
 
   struct rte_storage *prev = NULL;
-  log("rt_next_hop_update_net checked");
 
   if (is_flow)
   {
@@ -4889,7 +4889,6 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
 static void
 rt_nhu_uncork(callback *cb)
 {
-        log("rt_nhu_uncork");
   RT_LOCKED(SKIP_BACK(rtable, priv.nhu_uncork.cb, cb), tab)
   {
     ASSERT_DIE(tab->nhu_corked);
@@ -4909,7 +4908,6 @@ static void
 rt_next_hop_update(void *_tab)
 {
   RT_LOCK((rtable *) _tab, tab);
-  log("rt_next_hop_update");
 
   ASSERT_DIE(birdloop_inside(tab->loop));
 
@@ -4935,7 +4933,6 @@ rt_next_hop_update(void *_tab)
     tab->nhu_state = 0;
     return;
   }
-  log("rt_next_hop_update checked");
 
   /* Initialize a new run */
   if (tab->nhu_state == NHU_SCHEDULED)
@@ -5841,7 +5838,7 @@ krt_export_net(struct channel *c, const net_addr *a, linpool *lp)
   if (c->ra_mode == RA_MERGED)
   {
     struct rt_export_feed *feed = rt_net_feed(c->table, a, NULL);
-    log("krt_export_net c->ra_mode == RA_MERGED feed %p couint %i", feed, feed? feed->count_routes:0);
+    //log("krt_export_net c->ra_mode == RA_MERGED feed %p couint %i", feed, feed? feed->count_routes:0);
     if (!feed || !feed->count_routes)
       return NULL;
 
@@ -5858,13 +5855,11 @@ krt_export_net(struct channel *c, const net_addr *a, linpool *lp)
     if (!found_valid)
       return NULL;
 
-    log("go to merge");
     return rt_export_merged(c, feed, lp, 1);
   }
 
   static _Thread_local rte best;
   best = rt_net_best(c->table, a);
-  log("krt_export_net best %p", best);
 
   if (!best.attrs)
     return NULL;

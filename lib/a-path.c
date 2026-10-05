@@ -124,6 +124,7 @@ as_path_32to16(byte *dst, const byte *src, uint len)
     for (i = 0; i < n; i++)
     {
       put_u16(dst, get_u32(src));
+      //log("put as %i", get_u32(src));
       src += 4;
       dst += 2;
     }
@@ -230,6 +231,7 @@ as_path_strip_confed(struct linpool *pool, const struct adata *path)
 struct adata *
 as_path_prepend2(struct linpool *pool, const struct adata *op, int seq, u32 as)
 {
+  //log("as_path_prepend2 seq %i as %i", seq, as);
   struct adata *np;
   const byte *pos = op->data;
   uint len = op->length;
@@ -269,6 +271,7 @@ as_path_prepend2(struct linpool *pool, const struct adata *op, int seq, u32 as)
 struct adata *
 as_path_to_old(struct linpool *pool, const struct adata *path)
 {
+  log("as_path_to_old");
   struct adata *res = lp_alloc_adata(pool, path->length);
   byte *pos = res->data;
   byte *end = pos + res->length;
@@ -359,6 +362,7 @@ as_path_cut(struct linpool *pool, const struct adata *path, uint num)
 const struct adata *
 as_path_merge(struct linpool *pool, const struct adata *p1, const struct adata *p2)
 {
+  log("as_path_merge");
   if (p1->length == 0)
     return p2;
 

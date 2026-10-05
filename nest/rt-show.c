@@ -227,9 +227,10 @@ rt_show_net(struct rt_show_data *d, const struct rt_export_feed *feed)
 
   /* First we need to display the best route */
   rte *best = rte_select_best_from_feed(feed->block, feed->count_routes);
-  if (best)
+  log("beest %p", best);
+  if (best){log("best net %N proto %s", best->net, best->src->owner->name);
     rt_show_net_rte(d, feed, best, &first,
-        &first_show, &last_label, &pass, ia, sizeof(ia), 0);
+        &first_show, &last_label, &pass, ia, sizeof(ia), 0);}
 
   /* Then display all others */
   if (!d->primary_only)

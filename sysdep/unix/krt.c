@@ -410,7 +410,6 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
   if (p->sync_state == KPS_INIT)
     return;
 
-  log("got route");
   rte *new = NULL;
   e->pflags = 0;
 
@@ -475,6 +474,7 @@ aseen:
 
 update:
   krt_trace_in(p, new, "updating");
+  log("updating old %N %i %p for %N %i %p", e->net, e->id, e, new->net, e->id, new);
   krt_replace_rte(p, e->net, new, e);
   goto done;
 
