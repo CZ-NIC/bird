@@ -1220,8 +1220,8 @@ ospf_sh_state(struct proto *P, int verbose, int reachable)
      global-scoped (LSA_T_EXT) LSAs in array hex */
 
   uint num = p->gr->hash_entries;
-  struct top_hash_entry *hea[num];
-  struct top_hash_entry **hex = verbose ? alloca(num * sizeof(struct top_hash_entry *)) : NULL;
+  struct top_hash_entry **hea = tmp_alloc(num * sizeof(struct top_hash_entry *));
+  struct top_hash_entry **hex = verbose ? tmp_alloc(num * sizeof(struct top_hash_entry *)) : NULL;
   struct top_hash_entry *he;
   struct top_hash_entry *cnode = NULL;
 
