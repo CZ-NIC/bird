@@ -433,7 +433,7 @@ static void
 bgp_listen_dump(struct dump_request *dreq, resource *_req)
 {
   SKIP_BACK_DECLARE(struct bgp_listen_request, req, r, _req);
-  ASSERT_DIE(birdloop_inside(req->p->p.loop));
+  ASSERT_DIE(DG_IS_LOCKED(birdloop_domain(req->p->p.loop)));
 
   RDUMP("  sock=%p local_ip=%I%J remote_ip=%I", req->sock, req->local_ip, req->iface, req->remote_ip);
   if (req->remote_range) RDUMP(" remote_range=%N", req->remote_range);
