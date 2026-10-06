@@ -635,7 +635,7 @@ partial-build-linux-{{ test["protocols"] }}:
 
 {% for var in netlab.variants %}
 build-netlab-{{ var }}:
-  <<: *netlab-rules
+  <<: *netlab-{{ var }}-rules
   stage: build
   needs: []
   variables:
@@ -659,7 +659,7 @@ build-netlab-{{ var }}:
 
 {% for var in netlab.variants %}
 .netlab-test-{{ var }}: &test-base-{{ var }}
-  <<: *netlab-rules
+  <<: *netlab-{{ var }}-rules
   stage: test
   needs: [build-netlab-{{ var }}]
   tags:

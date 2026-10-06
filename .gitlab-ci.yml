@@ -2794,7 +2794,7 @@ partial-build-linux-static:
 
 
 build-netlab-default:
-  <<: *netlab-rules
+  <<: *netlab-default-rules
   stage: build
   needs: []
   variables:
@@ -2816,7 +2816,7 @@ build-netlab-default:
     expire_in: 2 hours
 
 build-netlab-satan:
-  <<: *netlab-rules
+  <<: *netlab-satan-rules
   stage: build
   needs: []
   variables:
@@ -2838,7 +2838,7 @@ build-netlab-satan:
     expire_in: 2 hours
 
 build-netlab-lucifer:
-  <<: *netlab-rules
+  <<: *netlab-lucifer-rules
   stage: build
   needs: []
   variables:
@@ -2860,7 +2860,7 @@ build-netlab-lucifer:
     expire_in: 2 hours
 
 build-netlab-belzebub:
-  <<: *netlab-rules
+  <<: *netlab-belzebub-rules
   stage: build
   needs: []
   variables:
@@ -2884,7 +2884,7 @@ build-netlab-belzebub:
 
 
 .netlab-test-default: &test-base-default
-  <<: *netlab-rules
+  <<: *netlab-default-rules
   stage: test
   needs: [build-netlab-default]
   tags:
@@ -2915,7 +2915,7 @@ build-netlab-belzebub:
     untracked: true
 
 .netlab-test-satan: &test-base-satan
-  <<: *netlab-rules
+  <<: *netlab-satan-rules
   stage: test
   needs: [build-netlab-satan]
   tags:
@@ -2946,7 +2946,7 @@ build-netlab-belzebub:
     untracked: true
 
 .netlab-test-lucifer: &test-base-lucifer
-  <<: *netlab-rules
+  <<: *netlab-lucifer-rules
   stage: test
   needs: [build-netlab-lucifer]
   tags:
@@ -2977,7 +2977,7 @@ build-netlab-belzebub:
     untracked: true
 
 .netlab-test-belzebub: &test-base-belzebub
-  <<: *netlab-rules
+  <<: *netlab-belzebub-rules
   stage: test
   needs: [build-netlab-belzebub]
   tags:
