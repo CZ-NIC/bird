@@ -190,6 +190,22 @@ partial_build:
 
 netlab:
   dataset: v2.17
+  variants:
+    default:
+      description: regular Netlab test
+      configure:
+    satan:
+      description: satanized Netlab test
+      configure: BUILD_WITH_SATAN
+      manual: true
+    lucifer:
+      description: luciferized Netlab test
+      configure: BUILD_WITH_LUCIFER
+      manual: true
+    belzebub:
+      description: belzebubuntu Netlab test
+      configure: BUILD_WITH_BELZEBUB
+      manual: true
   tests:
   - name: babel-base
   - name: babel-auth

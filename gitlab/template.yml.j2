@@ -11,10 +11,12 @@
 
 spec:
   inputs:
-    netlab:
-      description: "Manually run netlab tests"
+{% for var in netlab.variants %}
+    netlab-{{ var }}:
+      description: "Manually run {{ netlab.variants[var].description }}"
       type: boolean
       default: false
+{% endfor %}
     build:
       description: "Manually run build tests"
       type: boolean
@@ -84,7 +86,6 @@ stages:
 
 {%- set inputs_packages =    '"$[[ inputs.packages ]]" == "true"' %}
 {%- set inputs_build =       '"$[[ inputs.build ]]" == "true"' %}
-{%- set inputs_netlab =      '"$[[ inputs.netlab ]]" == "true"' %}
 {%- set inputs_docker_all =  '"$[[ inputs.docker-all ]]" == "true"' %}
 
 workflow:
@@ -621,12 +622,19 @@ partial-build-linux-{{ test["protocols"] }}:
 ## Netlab functionality tests ##
 ################################
 
-.netlab-rules: &netlab-rules
+{% for var in netlab.variants %}
+.netlab-{{ var }}-rules: &netlab-{{ var }}-rules
   rules:
-    - if: '{{ inputs_netlab }}'
+    - if: '"$[[ inputs.netlab-{{ var }} ]]" == "true"'
+{% if netlab.variants[var].manual %}
+    {{ rdef(False) }}
+{% else %}
     - !reference [ .default-rules ]
+{% endif %}
+{% endfor %}
 
-build-netlab:
+{% for var in netlab.variants %}
+build-netlab-{{ var }}:
   <<: *netlab-rules
   stage: build
   needs: []
@@ -640,18 +648,20 @@ build-netlab:
     - autoreconf
     - mkdir $BDIR
     - cd $BDIR
-    - ../configure
+    - ../configure {{ netlab.variants[var].configure }}
     - make
   artifacts:
     paths:
       - $BDIR/bird
       - $BDIR/birdc
     expire_in: 2 hours
+{% endfor %}
 
-.netlab-test: &test-base
+{% for var in netlab.variants %}
+.netlab-test-{{ var }}: &test-base-{{ var }}
   <<: *netlab-rules
   stage: test
-  needs: [build-netlab]
+  needs: [build-netlab-{{ var }}]
   tags:
     - netlab
     - amd64
@@ -678,10 +688,13 @@ build-netlab:
   artifacts:
     when: on_failure
     untracked: true
+{% endfor %}
 
+{% for var in netlab.variants %}
 {% for test in netlab.tests %}
-test-{{ test["name"] }}:
-  <<: *test-base
+test-{{ var }}-{{ test["name"] }}:
+  <<: *test-base-{{ var }}
   variables:
     TEST_NAME: cf-{{ test["name"] }}
+{% endfor %}
 {% endfor %}

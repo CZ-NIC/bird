@@ -11,10 +11,27 @@
 
 spec:
   inputs:
-    netlab:
-      description: "Manually run netlab tests"
+
+    netlab-default:
+      description: "Manually run regular Netlab test"
       type: boolean
       default: false
+
+    netlab-satan:
+      description: "Manually run satanized Netlab test"
+      type: boolean
+      default: false
+
+    netlab-lucifer:
+      description: "Manually run luciferized Netlab test"
+      type: boolean
+      default: false
+
+    netlab-belzebub:
+      description: "Manually run belzebubuntu Netlab test"
+      type: boolean
+      default: false
+
     build:
       description: "Manually run build tests"
       type: boolean
@@ -2745,12 +2762,38 @@ partial-build-linux-static:
 ## Netlab functionality tests ##
 ################################
 
-.netlab-rules: &netlab-rules
+
+.netlab-default-rules: &netlab-default-rules
   rules:
-    - if: '"$[[ inputs.netlab ]]" == "true"'
+    - if: '"$[[ inputs.netlab-default ]]" == "true"'
+
     - !reference [ .default-rules ]
 
-build-netlab:
+
+.netlab-satan-rules: &netlab-satan-rules
+  rules:
+    - if: '"$[[ inputs.netlab-satan ]]" == "true"'
+
+    - when: never
+
+
+.netlab-lucifer-rules: &netlab-lucifer-rules
+  rules:
+    - if: '"$[[ inputs.netlab-lucifer ]]" == "true"'
+
+    - when: never
+
+
+.netlab-belzebub-rules: &netlab-belzebub-rules
+  rules:
+    - if: '"$[[ inputs.netlab-belzebub ]]" == "true"'
+
+    - when: never
+
+
+
+
+build-netlab-default:
   <<: *netlab-rules
   stage: build
   needs: []
@@ -2764,7 +2807,7 @@ build-netlab:
     - autoreconf
     - mkdir $BDIR
     - cd $BDIR
-    - ../configure
+    - ../configure None
     - make
   artifacts:
     paths:
@@ -2772,10 +2815,171 @@ build-netlab:
       - $BDIR/birdc
     expire_in: 2 hours
 
-.netlab-test: &test-base
+build-netlab-satan:
+  <<: *netlab-rules
+  stage: build
+  needs: []
+  variables:
+    BDIR: build-netlab
+  tags:
+    - netlab
+    - amd64
+  script:
+    - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
+    - autoreconf
+    - mkdir $BDIR
+    - cd $BDIR
+    - ../configure BUILD_WITH_SATAN
+    - make
+  artifacts:
+    paths:
+      - $BDIR/bird
+      - $BDIR/birdc
+    expire_in: 2 hours
+
+build-netlab-lucifer:
+  <<: *netlab-rules
+  stage: build
+  needs: []
+  variables:
+    BDIR: build-netlab
+  tags:
+    - netlab
+    - amd64
+  script:
+    - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
+    - autoreconf
+    - mkdir $BDIR
+    - cd $BDIR
+    - ../configure BUILD_WITH_LUCIFER
+    - make
+  artifacts:
+    paths:
+      - $BDIR/bird
+      - $BDIR/birdc
+    expire_in: 2 hours
+
+build-netlab-belzebub:
+  <<: *netlab-rules
+  stage: build
+  needs: []
+  variables:
+    BDIR: build-netlab
+  tags:
+    - netlab
+    - amd64
+  script:
+    - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
+    - autoreconf
+    - mkdir $BDIR
+    - cd $BDIR
+    - ../configure BUILD_WITH_BELZEBUB
+    - make
+  artifacts:
+    paths:
+      - $BDIR/bird
+      - $BDIR/birdc
+    expire_in: 2 hours
+
+
+
+.netlab-test-default: &test-base-default
   <<: *netlab-rules
   stage: test
-  needs: [build-netlab]
+  needs: [build-netlab-default]
+  tags:
+    - netlab
+    - amd64
+  script:
+    - sudo rm -rf netlab-failure
+    - DIR=$(pwd)
+    - cd $TOOLS_DIR
+    - sudo git clean -fx
+    - sudo git checkout -f master
+    - git pull --ff-only
+    - "mv $DIR/build-netlab/* netlab/common/"
+    - ln -s $STAYRTR_BINARY netlab/common/stayrtr
+    - cd netlab
+    - sudo ./stop
+    - ulimit -f 1048576 # Protect the filesystem from overflowing by log bloat
+    - sudo ./runtest -s v2.17 -m check $TEST_NAME
+  after_script:
+    - DIR=$(pwd)
+    - cd $TOOLS_DIR/netlab
+    - sudo ./stop || echo "Stop failed"
+    - "mkdir -p $DIR/netlab-failure"
+    - git status --porcelain > $DIR/netlab-failure.log
+    - for f in $(git status --porcelain | sed -rn 's#^.[^DRT] netlab/##p'); do mkdir -p $DIR/netlab-failure/$(dirname $f); sudo chmod a+rw $f; sudo mv $f $DIR/netlab-failure/$(dirname $f); done
+  artifacts:
+    when: on_failure
+    untracked: true
+
+.netlab-test-satan: &test-base-satan
+  <<: *netlab-rules
+  stage: test
+  needs: [build-netlab-satan]
+  tags:
+    - netlab
+    - amd64
+  script:
+    - sudo rm -rf netlab-failure
+    - DIR=$(pwd)
+    - cd $TOOLS_DIR
+    - sudo git clean -fx
+    - sudo git checkout -f master
+    - git pull --ff-only
+    - "mv $DIR/build-netlab/* netlab/common/"
+    - ln -s $STAYRTR_BINARY netlab/common/stayrtr
+    - cd netlab
+    - sudo ./stop
+    - ulimit -f 1048576 # Protect the filesystem from overflowing by log bloat
+    - sudo ./runtest -s v2.17 -m check $TEST_NAME
+  after_script:
+    - DIR=$(pwd)
+    - cd $TOOLS_DIR/netlab
+    - sudo ./stop || echo "Stop failed"
+    - "mkdir -p $DIR/netlab-failure"
+    - git status --porcelain > $DIR/netlab-failure.log
+    - for f in $(git status --porcelain | sed -rn 's#^.[^DRT] netlab/##p'); do mkdir -p $DIR/netlab-failure/$(dirname $f); sudo chmod a+rw $f; sudo mv $f $DIR/netlab-failure/$(dirname $f); done
+  artifacts:
+    when: on_failure
+    untracked: true
+
+.netlab-test-lucifer: &test-base-lucifer
+  <<: *netlab-rules
+  stage: test
+  needs: [build-netlab-lucifer]
+  tags:
+    - netlab
+    - amd64
+  script:
+    - sudo rm -rf netlab-failure
+    - DIR=$(pwd)
+    - cd $TOOLS_DIR
+    - sudo git clean -fx
+    - sudo git checkout -f master
+    - git pull --ff-only
+    - "mv $DIR/build-netlab/* netlab/common/"
+    - ln -s $STAYRTR_BINARY netlab/common/stayrtr
+    - cd netlab
+    - sudo ./stop
+    - ulimit -f 1048576 # Protect the filesystem from overflowing by log bloat
+    - sudo ./runtest -s v2.17 -m check $TEST_NAME
+  after_script:
+    - DIR=$(pwd)
+    - cd $TOOLS_DIR/netlab
+    - sudo ./stop || echo "Stop failed"
+    - "mkdir -p $DIR/netlab-failure"
+    - git status --porcelain > $DIR/netlab-failure.log
+    - for f in $(git status --porcelain | sed -rn 's#^.[^DRT] netlab/##p'); do mkdir -p $DIR/netlab-failure/$(dirname $f); sudo chmod a+rw $f; sudo mv $f $DIR/netlab-failure/$(dirname $f); done
+  artifacts:
+    when: on_failure
+    untracked: true
+
+.netlab-test-belzebub: &test-base-belzebub
+  <<: *netlab-rules
+  stage: test
+  needs: [build-netlab-belzebub]
   tags:
     - netlab
     - amd64
@@ -2804,263 +3008,1052 @@ build-netlab:
     untracked: true
 
 
-test-babel-base:
-  <<: *test-base
+
+
+test-default-babel-base:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-babel-base
 
-test-babel-auth:
-  <<: *test-base
+test-default-babel-auth:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-babel-auth
 
-test-ospf-base:
-  <<: *test-base
+test-default-ospf-base:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ospf-base
 
-test-ospf-default:
-  <<: *test-base
+test-default-ospf-default:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ospf-default
 
-test-ospf-priority:
-  <<: *test-base
+test-default-ospf-priority:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ospf-priority
 
-test-ospf-nbma:
-  <<: *test-base
+test-default-ospf-nbma:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ospf-nbma
 
-test-ospf-ptmp:
-  <<: *test-base
+test-default-ospf-ptmp:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ospf-ptmp
 
-test-ospf-authentication:
-  <<: *test-base
+test-default-ospf-authentication:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ospf-authentication
 
-test-ospf-bfd:
-  <<: *test-base
+test-default-ospf-bfd:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ospf-bfd
 
-test-ospf-custom:
-  <<: *test-base
+test-default-ospf-custom:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ospf-custom
 
-test-ospf-area:
-  <<: *test-base
+test-default-ospf-area:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ospf-area
 
-test-ospf-vrf:
-  <<: *test-base
+test-default-ospf-vrf:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ospf-vrf
 
-test-bgp-base:
-  <<: *test-base
+test-default-bgp-base:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-bgp-base
 
-test-bgp-auth:
-  <<: *test-base
+test-default-bgp-auth:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-bgp-auth
 
-test-bgp-int:
-  <<: *test-base
+test-default-bgp-int:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-bgp-int
 
-test-bgp-merged:
-  <<: *test-base
+test-default-bgp-merged:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-bgp-merged
 
-test-bgp-flowspec:
-  <<: *test-base
+test-default-bgp-flowspec:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-bgp-flowspec
 
-test-bgp-rs-multitab:
-  <<: *test-base
+test-default-bgp-rs-multitab:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-bgp-rs-multitab
 
-test-bgp-rs-singletab:
-  <<: *test-base
+test-default-bgp-rs-singletab:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-bgp-rs-singletab
 
-test-ebgp-graceful:
-  <<: *test-base
+test-default-ebgp-graceful:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-graceful
 
-test-ebgp-loop:
-  <<: *test-base
+test-default-ebgp-loop:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-loop
 
-test-ebgp-star:
-  <<: *test-base
+test-default-ebgp-star:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-star
 
-test-ebgp-role:
-  <<: *test-base
+test-default-ebgp-role:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-role
 
-test-ebgp-import-limit:
-  <<: *test-base
+test-default-ebgp-import-limit:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-import-limit
 
-test-ebgp-hostname:
-  <<: *test-base
+test-default-ebgp-hostname:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-hostname
 
-test-ebgp-bfd-auth:
-  <<: *test-base
+test-default-ebgp-bfd-auth:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-bfd-auth
 
-test-ibgp-loop:
-  <<: *test-base
+test-default-ibgp-loop:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ibgp-loop
 
-test-ibgp-loop-big:
-  <<: *test-base
+test-default-ibgp-loop-big:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ibgp-loop-big
 
-test-ibgp-flat:
-  <<: *test-base
+test-default-ibgp-flat:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ibgp-flat
 
-test-ibgp-bfd-auth:
-  <<: *test-base
+test-default-ibgp-bfd-auth:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ibgp-bfd-auth
 
-test-rip-base:
-  <<: *test-base
+test-default-rip-base:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-rip-base
 
-test-rip-vrf:
-  <<: *test-base
+test-default-rip-vrf:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-rip-vrf
 
-test-kernel-learn:
-  <<: *test-base
+test-default-kernel-learn:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-kernel-learn
 
-test-mpls-bgp:
-  <<: *test-base
+test-default-mpls-bgp:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-mpls-bgp
 
-test-mpls-bgp-l3vpn:
-  <<: *test-base
+test-default-mpls-bgp-l3vpn:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-mpls-bgp-l3vpn
 
-test-pipe-collision:
-  <<: *test-base
+test-default-pipe-collision:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-pipe-collision
 
-test-bgp-unnumbered:
-  <<: *test-base
+test-default-bgp-unnumbered:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-bgp-unnumbered
 
-test-bgp-error-states:
-  <<: *test-base
+test-default-bgp-error-states:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-bgp-error-states
 
-test-ebgp-refresh/gen/imno-basic-imex-basic:
-  <<: *test-base
+test-default-ebgp-refresh/gen/imno-basic-imex-basic:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/imno-basic-imex-basic
 
-test-ebgp-refresh/gen/noex-basic-imno-enhanced:
-  <<: *test-base
+test-default-ebgp-refresh/gen/noex-basic-imno-enhanced:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/noex-basic-imno-enhanced
 
-test-ebgp-refresh/gen/imex-basic-noex-none:
-  <<: *test-base
+test-default-ebgp-refresh/gen/imex-basic-noex-none:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/imex-basic-noex-none
 
-test-ebgp-refresh/gen/nono-enhanced-nono-basic:
-  <<: *test-base
+test-default-ebgp-refresh/gen/nono-enhanced-nono-basic:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-basic
 
-test-ebgp-refresh/gen/imno-none-imex-basic:
-  <<: *test-base
+test-default-ebgp-refresh/gen/imno-none-imex-basic:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/imno-none-imex-basic
 
-test-ebgp-refresh/gen/noex-none-imno-enhanced:
-  <<: *test-base
+test-default-ebgp-refresh/gen/noex-none-imno-enhanced:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/noex-none-imno-enhanced
 
-test-ebgp-refresh/gen/imex-none-noex-none:
-  <<: *test-base
+test-default-ebgp-refresh/gen/imex-none-noex-none:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/imex-none-noex-none
 
-test-ebgp-refresh/gen/nono-none-nono-basic:
-  <<: *test-base
+test-default-ebgp-refresh/gen/nono-none-nono-basic:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/nono-none-nono-basic
 
-test-ebgp-refresh/gen/imno-enhanced-imex-enhanced:
-  <<: *test-base
+test-default-ebgp-refresh/gen/imno-enhanced-imex-enhanced:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/imno-enhanced-imex-enhanced
 
-test-ebgp-refresh/gen/noex-enhanced-imno-enhanced:
-  <<: *test-base
+test-default-ebgp-refresh/gen/noex-enhanced-imno-enhanced:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/noex-enhanced-imno-enhanced
 
-test-ebgp-refresh/gen/imex-enhanced-noex-enhanced:
-  <<: *test-base
+test-default-ebgp-refresh/gen/imex-enhanced-noex-enhanced:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/imex-enhanced-noex-enhanced
 
-test-ebgp-refresh/gen/nono-enhanced-nono-enhanced:
-  <<: *test-base
+test-default-ebgp-refresh/gen/nono-enhanced-nono-enhanced:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-enhanced
 
-test-evpn-bgp:
-  <<: *test-base
+test-default-evpn-bgp:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-evpn-bgp
 
-test-evpn-bgp-tags:
-  <<: *test-base
+test-default-evpn-bgp-tags:
+  <<: *test-base-default
   variables:
     TEST_NAME: cf-evpn-bgp-tags
+
+
+
+test-satan-babel-base:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-babel-base
+
+test-satan-babel-auth:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-babel-auth
+
+test-satan-ospf-base:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ospf-base
+
+test-satan-ospf-default:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ospf-default
+
+test-satan-ospf-priority:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ospf-priority
+
+test-satan-ospf-nbma:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ospf-nbma
+
+test-satan-ospf-ptmp:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ospf-ptmp
+
+test-satan-ospf-authentication:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ospf-authentication
+
+test-satan-ospf-bfd:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ospf-bfd
+
+test-satan-ospf-custom:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ospf-custom
+
+test-satan-ospf-area:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ospf-area
+
+test-satan-ospf-vrf:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ospf-vrf
+
+test-satan-bgp-base:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-bgp-base
+
+test-satan-bgp-auth:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-bgp-auth
+
+test-satan-bgp-int:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-bgp-int
+
+test-satan-bgp-merged:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-bgp-merged
+
+test-satan-bgp-flowspec:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-bgp-flowspec
+
+test-satan-bgp-rs-multitab:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-bgp-rs-multitab
+
+test-satan-bgp-rs-singletab:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-bgp-rs-singletab
+
+test-satan-ebgp-graceful:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-graceful
+
+test-satan-ebgp-loop:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-loop
+
+test-satan-ebgp-star:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-star
+
+test-satan-ebgp-role:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-role
+
+test-satan-ebgp-import-limit:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-import-limit
+
+test-satan-ebgp-hostname:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-hostname
+
+test-satan-ebgp-bfd-auth:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-bfd-auth
+
+test-satan-ibgp-loop:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ibgp-loop
+
+test-satan-ibgp-loop-big:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ibgp-loop-big
+
+test-satan-ibgp-flat:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ibgp-flat
+
+test-satan-ibgp-bfd-auth:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ibgp-bfd-auth
+
+test-satan-rip-base:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-rip-base
+
+test-satan-rip-vrf:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-rip-vrf
+
+test-satan-kernel-learn:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-kernel-learn
+
+test-satan-mpls-bgp:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-mpls-bgp
+
+test-satan-mpls-bgp-l3vpn:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-mpls-bgp-l3vpn
+
+test-satan-pipe-collision:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-pipe-collision
+
+test-satan-bgp-unnumbered:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-bgp-unnumbered
+
+test-satan-bgp-error-states:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-bgp-error-states
+
+test-satan-ebgp-refresh/gen/imno-basic-imex-basic:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imno-basic-imex-basic
+
+test-satan-ebgp-refresh/gen/noex-basic-imno-enhanced:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/noex-basic-imno-enhanced
+
+test-satan-ebgp-refresh/gen/imex-basic-noex-none:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imex-basic-noex-none
+
+test-satan-ebgp-refresh/gen/nono-enhanced-nono-basic:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-basic
+
+test-satan-ebgp-refresh/gen/imno-none-imex-basic:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imno-none-imex-basic
+
+test-satan-ebgp-refresh/gen/noex-none-imno-enhanced:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/noex-none-imno-enhanced
+
+test-satan-ebgp-refresh/gen/imex-none-noex-none:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imex-none-noex-none
+
+test-satan-ebgp-refresh/gen/nono-none-nono-basic:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/nono-none-nono-basic
+
+test-satan-ebgp-refresh/gen/imno-enhanced-imex-enhanced:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imno-enhanced-imex-enhanced
+
+test-satan-ebgp-refresh/gen/noex-enhanced-imno-enhanced:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/noex-enhanced-imno-enhanced
+
+test-satan-ebgp-refresh/gen/imex-enhanced-noex-enhanced:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imex-enhanced-noex-enhanced
+
+test-satan-ebgp-refresh/gen/nono-enhanced-nono-enhanced:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-enhanced
+
+test-satan-evpn-bgp:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-evpn-bgp
+
+test-satan-evpn-bgp-tags:
+  <<: *test-base-satan
+  variables:
+    TEST_NAME: cf-evpn-bgp-tags
+
+
+
+test-lucifer-babel-base:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-babel-base
+
+test-lucifer-babel-auth:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-babel-auth
+
+test-lucifer-ospf-base:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ospf-base
+
+test-lucifer-ospf-default:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ospf-default
+
+test-lucifer-ospf-priority:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ospf-priority
+
+test-lucifer-ospf-nbma:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ospf-nbma
+
+test-lucifer-ospf-ptmp:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ospf-ptmp
+
+test-lucifer-ospf-authentication:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ospf-authentication
+
+test-lucifer-ospf-bfd:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ospf-bfd
+
+test-lucifer-ospf-custom:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ospf-custom
+
+test-lucifer-ospf-area:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ospf-area
+
+test-lucifer-ospf-vrf:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ospf-vrf
+
+test-lucifer-bgp-base:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-bgp-base
+
+test-lucifer-bgp-auth:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-bgp-auth
+
+test-lucifer-bgp-int:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-bgp-int
+
+test-lucifer-bgp-merged:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-bgp-merged
+
+test-lucifer-bgp-flowspec:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-bgp-flowspec
+
+test-lucifer-bgp-rs-multitab:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-bgp-rs-multitab
+
+test-lucifer-bgp-rs-singletab:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-bgp-rs-singletab
+
+test-lucifer-ebgp-graceful:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-graceful
+
+test-lucifer-ebgp-loop:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-loop
+
+test-lucifer-ebgp-star:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-star
+
+test-lucifer-ebgp-role:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-role
+
+test-lucifer-ebgp-import-limit:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-import-limit
+
+test-lucifer-ebgp-hostname:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-hostname
+
+test-lucifer-ebgp-bfd-auth:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-bfd-auth
+
+test-lucifer-ibgp-loop:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ibgp-loop
+
+test-lucifer-ibgp-loop-big:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ibgp-loop-big
+
+test-lucifer-ibgp-flat:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ibgp-flat
+
+test-lucifer-ibgp-bfd-auth:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ibgp-bfd-auth
+
+test-lucifer-rip-base:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-rip-base
+
+test-lucifer-rip-vrf:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-rip-vrf
+
+test-lucifer-kernel-learn:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-kernel-learn
+
+test-lucifer-mpls-bgp:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-mpls-bgp
+
+test-lucifer-mpls-bgp-l3vpn:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-mpls-bgp-l3vpn
+
+test-lucifer-pipe-collision:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-pipe-collision
+
+test-lucifer-bgp-unnumbered:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-bgp-unnumbered
+
+test-lucifer-bgp-error-states:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-bgp-error-states
+
+test-lucifer-ebgp-refresh/gen/imno-basic-imex-basic:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imno-basic-imex-basic
+
+test-lucifer-ebgp-refresh/gen/noex-basic-imno-enhanced:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/noex-basic-imno-enhanced
+
+test-lucifer-ebgp-refresh/gen/imex-basic-noex-none:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imex-basic-noex-none
+
+test-lucifer-ebgp-refresh/gen/nono-enhanced-nono-basic:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-basic
+
+test-lucifer-ebgp-refresh/gen/imno-none-imex-basic:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imno-none-imex-basic
+
+test-lucifer-ebgp-refresh/gen/noex-none-imno-enhanced:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/noex-none-imno-enhanced
+
+test-lucifer-ebgp-refresh/gen/imex-none-noex-none:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imex-none-noex-none
+
+test-lucifer-ebgp-refresh/gen/nono-none-nono-basic:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/nono-none-nono-basic
+
+test-lucifer-ebgp-refresh/gen/imno-enhanced-imex-enhanced:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imno-enhanced-imex-enhanced
+
+test-lucifer-ebgp-refresh/gen/noex-enhanced-imno-enhanced:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/noex-enhanced-imno-enhanced
+
+test-lucifer-ebgp-refresh/gen/imex-enhanced-noex-enhanced:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imex-enhanced-noex-enhanced
+
+test-lucifer-ebgp-refresh/gen/nono-enhanced-nono-enhanced:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-enhanced
+
+test-lucifer-evpn-bgp:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-evpn-bgp
+
+test-lucifer-evpn-bgp-tags:
+  <<: *test-base-lucifer
+  variables:
+    TEST_NAME: cf-evpn-bgp-tags
+
+
+
+test-belzebub-babel-base:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-babel-base
+
+test-belzebub-babel-auth:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-babel-auth
+
+test-belzebub-ospf-base:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ospf-base
+
+test-belzebub-ospf-default:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ospf-default
+
+test-belzebub-ospf-priority:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ospf-priority
+
+test-belzebub-ospf-nbma:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ospf-nbma
+
+test-belzebub-ospf-ptmp:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ospf-ptmp
+
+test-belzebub-ospf-authentication:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ospf-authentication
+
+test-belzebub-ospf-bfd:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ospf-bfd
+
+test-belzebub-ospf-custom:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ospf-custom
+
+test-belzebub-ospf-area:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ospf-area
+
+test-belzebub-ospf-vrf:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ospf-vrf
+
+test-belzebub-bgp-base:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-bgp-base
+
+test-belzebub-bgp-auth:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-bgp-auth
+
+test-belzebub-bgp-int:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-bgp-int
+
+test-belzebub-bgp-merged:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-bgp-merged
+
+test-belzebub-bgp-flowspec:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-bgp-flowspec
+
+test-belzebub-bgp-rs-multitab:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-bgp-rs-multitab
+
+test-belzebub-bgp-rs-singletab:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-bgp-rs-singletab
+
+test-belzebub-ebgp-graceful:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-graceful
+
+test-belzebub-ebgp-loop:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-loop
+
+test-belzebub-ebgp-star:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-star
+
+test-belzebub-ebgp-role:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-role
+
+test-belzebub-ebgp-import-limit:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-import-limit
+
+test-belzebub-ebgp-hostname:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-hostname
+
+test-belzebub-ebgp-bfd-auth:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-bfd-auth
+
+test-belzebub-ibgp-loop:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ibgp-loop
+
+test-belzebub-ibgp-loop-big:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ibgp-loop-big
+
+test-belzebub-ibgp-flat:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ibgp-flat
+
+test-belzebub-ibgp-bfd-auth:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ibgp-bfd-auth
+
+test-belzebub-rip-base:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-rip-base
+
+test-belzebub-rip-vrf:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-rip-vrf
+
+test-belzebub-kernel-learn:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-kernel-learn
+
+test-belzebub-mpls-bgp:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-mpls-bgp
+
+test-belzebub-mpls-bgp-l3vpn:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-mpls-bgp-l3vpn
+
+test-belzebub-pipe-collision:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-pipe-collision
+
+test-belzebub-bgp-unnumbered:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-bgp-unnumbered
+
+test-belzebub-bgp-error-states:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-bgp-error-states
+
+test-belzebub-ebgp-refresh/gen/imno-basic-imex-basic:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imno-basic-imex-basic
+
+test-belzebub-ebgp-refresh/gen/noex-basic-imno-enhanced:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/noex-basic-imno-enhanced
+
+test-belzebub-ebgp-refresh/gen/imex-basic-noex-none:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imex-basic-noex-none
+
+test-belzebub-ebgp-refresh/gen/nono-enhanced-nono-basic:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-basic
+
+test-belzebub-ebgp-refresh/gen/imno-none-imex-basic:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imno-none-imex-basic
+
+test-belzebub-ebgp-refresh/gen/noex-none-imno-enhanced:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/noex-none-imno-enhanced
+
+test-belzebub-ebgp-refresh/gen/imex-none-noex-none:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imex-none-noex-none
+
+test-belzebub-ebgp-refresh/gen/nono-none-nono-basic:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/nono-none-nono-basic
+
+test-belzebub-ebgp-refresh/gen/imno-enhanced-imex-enhanced:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imno-enhanced-imex-enhanced
+
+test-belzebub-ebgp-refresh/gen/noex-enhanced-imno-enhanced:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/noex-enhanced-imno-enhanced
+
+test-belzebub-ebgp-refresh/gen/imex-enhanced-noex-enhanced:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imex-enhanced-noex-enhanced
+
+test-belzebub-ebgp-refresh/gen/nono-enhanced-nono-enhanced:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-enhanced
+
+test-belzebub-evpn-bgp:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-evpn-bgp
+
+test-belzebub-evpn-bgp-tags:
+  <<: *test-base-belzebub
+  variables:
+    TEST_NAME: cf-evpn-bgp-tags
+
 
