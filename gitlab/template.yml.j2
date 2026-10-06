@@ -182,7 +182,9 @@ pipeline-infodump:
 {%- endfor %}
     echo
     echo "### Inputs ###"
-    echo "Netlab: $[[ inputs.netlab ]]"
+{%- for var in netlab.variants %}
+    echo "{{ netlab.variants[var].description }}: $[[ inputs.netlab-{{ var }} ]]"
+{%- endfor %}
     echo "Build: $[[ inputs.build ]]"
     echo "Packages: $[[ inputs.packages ]]"
     echo "Docker all: $[[ inputs.docker-all ]]"

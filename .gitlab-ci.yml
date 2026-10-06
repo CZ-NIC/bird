@@ -211,7 +211,10 @@ pipeline-infodump:
     echo "\$wf_kind = $wf_kind"
     echo
     echo "### Inputs ###"
-    echo "Netlab: $[[ inputs.netlab ]]"
+    echo "regular Netlab test: $[[ inputs.netlab-default ]]"
+    echo "satanized Netlab test: $[[ inputs.netlab-satan ]]"
+    echo "luciferized Netlab test: $[[ inputs.netlab-lucifer ]]"
+    echo "belzebubuntu Netlab test: $[[ inputs.netlab-belzebub ]]"
     echo "Build: $[[ inputs.build ]]"
     echo "Packages: $[[ inputs.packages ]]"
     echo "Docker all: $[[ inputs.docker-all ]]"
