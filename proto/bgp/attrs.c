@@ -496,7 +496,7 @@ bgp_encode_as_path(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
   if (!s->as4_session)
   {
     /* Prepare 16-bit AS_PATH (from 32-bit one) in a temporary buffer */
-    byte *dst = alloca(len);
+    byte *dst = tmp_alloc(len);
     len = as_path_32to16(dst, data, len);
     data = dst;
   }
@@ -520,7 +520,7 @@ bgp_decode_as_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte
   {
     /* Prepare 32-bit AS_PATH (from 16-bit one) in a temporary buffer */
     byte *src = data;
-    data = alloca(2*len);
+    data = tmp_alloc(2 * len);
     len = as_path_16to32(data, src, len);
   }
 
