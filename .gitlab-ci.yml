@@ -906,7 +906,7 @@ docker-ubuntu-26.04-amd64:
     - ulimit -c unlimited; ${CROSS_RUN} ./bird --version |& grep -v 'Cannot disable transparent huge pages' | tee obj/version-built
     - diff obj/version-built version-expected
   after_script:
-    - if find -name 'core' -or -name 'core.*'; then git clone https://gitlab.nic.cz/labs/bird-group/debugpack; cd debugpack; pip install -e .; debugpack pack core; fi
+    - if find -name 'core' -or -name 'core.*'; then git clone https://gitlab.nic.cz/labs/bird-group/debugpack; pushd debugpack; pip install -e .; popd; find '(' -name 'core' -or -name 'core.*' ')' -exec debugpack pack '{}' ';'; fi
   artifacts:
     when: on_failure
     untracked: true
