@@ -338,7 +338,11 @@ static int
 l3vpn_rte_better(const rte *new, const rte *old)
 {
   /* This is hack, we should have full BGP-style comparison */
-  return l3vpn_metric(new) < l3vpn_metric(old);
+  u32 new_metric = l3vpn_metric(new);
+  u32 old_metric = l3vpn_metric(old);
+  if (new_metric != old_metric)
+    return new_metric < old_metric;
+  return new->src->private_id < old->src->private_id;
 }
 
 static void

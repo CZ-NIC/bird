@@ -407,7 +407,8 @@ ospf_rte_better(const rte *new, const rte *old)
   if (new_metric1 < old_metric1)
     return 1;
 
-  return 0;			/* Old is shorter or same */
+/* Old is shorter or same - but we want to be deterministic */
+  return new->src->private_id < old->src->private_id;
 }
 
 static u32
