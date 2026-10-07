@@ -117,7 +117,8 @@ ospf_receive_lsreq(struct ospf_packet *pkt, struct ospf_iface *ifa,
 
   ospf_lsreq_body(p, pkt, &lsrs, &lsr_count);
 
-  struct top_hash_entry *en, *entries[lsr_count];
+  struct top_hash_entry *en;
+  struct top_hash_entry **entries = tmp_alloc(lsr_count * sizeof(struct top_hash_entry *));
 
   for (i = 0; i < lsr_count; i++)
   {
