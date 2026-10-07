@@ -147,6 +147,10 @@ dev_postconfig(struct proto_config *CF)
   cf->ip6_channel = ip6 ?: ip6_sadr;
 }
 
+static struct rte_owner_class dev_rte_owner_class = {
+  .rte_better =	dev_rte_better,
+};
+
 static struct proto *
 dev_init(struct proto_config *CF)
 {
@@ -159,7 +163,7 @@ dev_init(struct proto_config *CF)
 
   P->iface_sub.if_notify = dev_if_notify;
   P->iface_sub.ifa_notify = dev_ifa_notify;
-  P->sources.class->rte_better = dev_rte_better;
+  P->sources.class = &dev_rte_owner_class;
 
   return P;
 }
