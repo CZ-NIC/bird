@@ -117,6 +117,19 @@ dev_if_notify(struct proto *p, uint c, struct iface *iface)
   }
 }
 
+static int
+dev_rte_better(const rte *new, const rte *old)
+{
+  int sc = strcmp(new->src->owner->name, old->src->owner->name);
+  if (sc < 0)
+    return 0;
+  if (sc > 0)
+    return 1;
+
+  return new->src->private_id < old->src->private_id;
+}
+
+
 static void
 dev_postconfig(struct proto_config *CF)
 {
@@ -146,6 +159,7 @@ dev_init(struct proto_config *CF)
 
   P->iface_sub.if_notify = dev_if_notify;
   P->iface_sub.ifa_notify = dev_ifa_notify;
+  P->sources.class->rte_better = dev_rte_better;
 
   return P;
 }

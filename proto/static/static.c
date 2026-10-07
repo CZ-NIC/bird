@@ -489,6 +489,13 @@ static_rte_better(const rte *new, const rte *old)
   u32 o = ea_get_int(old->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
   if (n != o)
     return n < o;
+
+  int sc = strcmp(new->src->owner->name, old->src->owner->name);
+  if (sc < 0)
+    return 0;
+  if (sc > 0)
+    return 1;
+
   return new->src->private_id < old->src->private_id;
 }
 
