@@ -161,12 +161,12 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
   }
 
   /* Allocate RTA and EA list */
-  struct rta *rta = allocz(rta_size(bucket->rte->attrs));
+  struct rta *rta = tmp_allocz(rta_size(bucket->rte->attrs));
   rta->dest = RTD_UNREACHABLE;
   rta->source = RTS_AGGREGATED;
   rta->scope = SCOPE_UNIVERSE;
 
-  struct ea_list *eal = allocz(sizeof(struct ea_list) + sizeof(struct eattr) * p->aggr_on_da_count);
+  struct ea_list *eal = tmp_allocz(sizeof(struct ea_list) + sizeof(struct eattr) * p->aggr_on_da_count);
   eal->next = NULL;
   eal->count = 0;
   rta->eattrs = eal;

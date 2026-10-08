@@ -201,7 +201,7 @@ bt_fmt_bytestr(char *buf, size_t size, const void *data_)
     return;
   }
 
-  char *tmp = allocz(2 * data->len + 1);
+  char *tmp = tmp_allocz(2 * data->len + 1);
   char *t = tmp;
 
   for (int i = 0; i < data->len; i++)

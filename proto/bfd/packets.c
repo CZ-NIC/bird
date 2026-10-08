@@ -261,7 +261,7 @@ bfd_check_authentication(struct bfd_proto *p, struct bfd_session *s, struct bfd_
       return 0;
     }
 
-    byte *auth_data = alloca(hash_len);
+    byte *auth_data = tmp_alloc(hash_len);
     memcpy(auth_data, auth->data, hash_len);
     memcpy0(auth->data, pass->password, hash_len, pass->length);
 

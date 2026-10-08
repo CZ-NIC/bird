@@ -67,7 +67,7 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
     {
       src = new->src;
 
-      a = alloca(rta_size(new->attrs));
+      a = tmp_alloc(rta_size(new->attrs));
       memcpy(a, new->attrs, rta_size(new->attrs));
 
       a->cached = 0;

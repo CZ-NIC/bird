@@ -578,7 +578,7 @@ ea_do_sort(ea_list *e)
 {
   unsigned n = e->count;
   eattr *a = e->attrs;
-  eattr *b = alloca(n * sizeof(eattr));
+  eattr *b = tmp_alloc(n * sizeof(eattr));
   unsigned s, ss;
 
   /* We need to use a stable sorting algorithm, hence mergesort */

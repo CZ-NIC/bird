@@ -633,7 +633,7 @@ void ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const cha
 
 #define ea_normalize(ea) do { \
   if (ea->next) { \
-    ea_list *t = alloca(ea_scan(ea)); \
+    ea_list *t = tmp_alloc(ea_scan(ea)); \
     ea_merge(ea, t); \
     ea = t; \
   } \

@@ -2140,7 +2140,7 @@ bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     }
 
     /* Prepare the flow */
-    net_addr *n = alloca(sizeof(struct net_addr_flow4) + flen);
+    net_addr *n = tmp_alloc(sizeof(struct net_addr_flow4) + flen);
     net_fill_flow4(n, px, pxlen, pos, flen);
     ADVANCE(pos, len, flen);
 
@@ -2235,7 +2235,7 @@ bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     }
 
     /* Prepare the flow */
-    net_addr *n = alloca(sizeof(struct net_addr_flow6) + flen);
+    net_addr *n = tmp_alloc(sizeof(struct net_addr_flow6) + flen);
     net_fill_flow6(n, px, pxlen, pos, flen);
     ADVANCE(pos, len, flen);
 
@@ -3074,7 +3074,7 @@ bgp_bmp_encode_rte(struct bgp_channel *c, byte *buf, byte *end, const net_addr *
   uint prefix_size = sizeof(struct bgp_prefix) + n->length;
 
   /* Sham bucket */
-  struct bgp_bucket *b = alloca(bucket_size);
+  struct bgp_bucket *b = tmp_alloc(bucket_size);
   *b = (struct bgp_bucket) { };
   init_list(&b->prefixes);
 
@@ -3084,7 +3084,7 @@ bgp_bmp_encode_rte(struct bgp_channel *c, byte *buf, byte *end, const net_addr *
     b->eattrs[0] = (ea_list) { };
 
   /* Sham prefix */
-  struct bgp_prefix *px = alloca(prefix_size);
+  struct bgp_prefix *px = tmp_alloc(prefix_size);
   *px = (struct bgp_prefix) { };
   px->path_id = (u32) src->private_id;
   net_copy(px->net, n);

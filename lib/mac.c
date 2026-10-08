@@ -99,8 +99,8 @@ hmac_init(struct mac_context *ctx, const byte *key, uint keylen)
   uint block_size = ctx->type->block_size;
   uint hash_size = ctx->type->hash_size;
 
-  byte *keybuf = alloca(block_size);
-  byte *buf = alloca(block_size);
+  byte *keybuf = tmp_alloc(block_size);
+  byte *buf = tmp_alloc(block_size);
   uint i;
 
   /* Hash the key if necessary */
