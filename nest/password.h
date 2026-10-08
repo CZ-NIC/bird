@@ -28,7 +28,7 @@ void password_validate_length(const struct password_item *p);
 
 static inline int password_verify(const struct password_item *p1, const char *p2, uint size)
 {
-  char buf[size];
+  char *buf = tmp_allocz(sizeof(char) * size);
   memcpy0(buf, p1->password, size, p1->length);
   return !memcmp(buf, p2, size);
 }

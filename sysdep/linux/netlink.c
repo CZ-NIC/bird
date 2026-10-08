@@ -774,7 +774,7 @@ nl_add_attr_ipa(struct nlmsghdr *h, uint bufsize, int code, ip_addr ipa)
 static inline void
 nl_add_attr_mpls(struct nlmsghdr *h, uint bufsize, int code, int len, u32 *stack)
 {
-  char buf[len*4];
+  char *buf = tmp_alloc(sizeof(char) * len * 4);
   mpls_put(buf, len, stack);
   nl_add_attr(h, bufsize, code, buf, len*4);
 }

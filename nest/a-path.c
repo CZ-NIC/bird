@@ -635,7 +635,7 @@ as_path_filter(struct linpool *pool, const struct adata *path, const struct f_va
   const u8 *q = path->data + len;
   u8 *d, *d2;
   int i, bt, sn, dn;
-  u8 buf[len];
+  u8 *buf = tmp_alloc(sizeof(u8) * len);
 
   d = buf;
   while (p<q)

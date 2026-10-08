@@ -778,7 +778,7 @@ rpki_handle_cache_response_pdu(struct rpki_cache *cache, const struct pdu_cache_
   {
     if (cache->session_id != pdu->session_id)
     {
-      byte tmp[pdu->len];
+      byte *tmp = tmp_alloc(sizeof(byte) * pdu->len);
       const struct pdu_header *hton_pdu = rpki_pdu_back_to_network_byte_order((void *) tmp, (const void *) pdu);
       rpki_send_error_pdu(cache, CORRUPT_DATA, pdu->len, hton_pdu, "Wrong session_id %u in Cache Response PDU", pdu->session_id);
       rpki_cache_change_state(cache, RPKI_CS_ERROR_FATAL);
@@ -847,7 +847,7 @@ rpki_handle_prefix_pdu(struct rpki_cache *cache, const struct pdu_header *pdu)
 	(addr.roa4.max_pxlen > IP4_MAX_PREFIX_LENGTH))
     {
       RPKI_WARN(cache->p, "Received corrupt packet from RPKI cache server: invalid pxlen or max_pxlen");
-      byte tmp[pdu->len];
+      byte *tmp = tmp_alloc(sizeof(byte) * pdu->len);
       const struct pdu_header *hton_pdu = rpki_pdu_back_to_network_byte_order((void *) tmp, (const void *) pdu);
       rpki_send_error_pdu(cache, CORRUPT_DATA, pdu->len, hton_pdu, "Corrupted PDU: invalid pxlen or max_pxlen");
       rpki_cache_change_state(cache, RPKI_CS_ERROR_FATAL);
@@ -860,7 +860,7 @@ rpki_handle_prefix_pdu(struct rpki_cache *cache, const struct pdu_header *pdu)
 	(addr.roa6.max_pxlen > IP6_MAX_PREFIX_LENGTH))
     {
       RPKI_WARN(cache->p, "Received corrupt packet from RPKI cache server: invalid pxlen or max_pxlen");
-      byte tmp[pdu->len];
+      byte *tmp = tmp_alloc(sizeof(byte) * pdu->len);
       const struct pdu_header *hton_pdu = rpki_pdu_back_to_network_byte_order((void *) tmp, (const void *) pdu);
       rpki_send_error_pdu(cache, CORRUPT_DATA, pdu->len, hton_pdu, "Corrupted PDU: invalid pxlen or max_pxlen");
       rpki_cache_change_state(cache, RPKI_CS_ERROR_FATAL);
@@ -942,7 +942,7 @@ rpki_handle_end_of_data_pdu(struct rpki_cache *cache, const struct pdu_end_of_da
 
   if (pdu->session_id != cache->session_id)
   {
-    byte tmp[pdu->len];
+    byte *tmp = tmp_alloc(sizeof(byte) * pdu->len);
     const struct pdu_header *hton_pdu = rpki_pdu_back_to_network_byte_order((void *) tmp, (const void *) pdu);
     rpki_send_error_pdu(cache, CORRUPT_DATA, pdu->len, hton_pdu, "Received Session ID %u, but expected %u", pdu->session_id, cache->session_id);
     rpki_cache_change_state(cache, RPKI_CS_ERROR_FATAL);
@@ -1191,8 +1191,8 @@ rpki_send_error_pdu(struct rpki_cache *cache, const enum pdu_error_type error_co
   err_pdu_len = MIN(err_pdu_len, err_pdu_max_len);
 
   u32 pdu_size = 16 + err_pdu_len + msg_len;
-  byte pdu[pdu_size];
-  memset(pdu, 0, sizeof(pdu));
+  byte *pdu = tmp_alloc(sizeof(byte) * pdu_size);
+  memset(pdu, 0, sizeof(byte) * pdu_size);
 
   struct pdu_error *e = (void *) pdu;
   e->ver = cache->version;

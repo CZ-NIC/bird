@@ -401,7 +401,7 @@ int_set_union(struct linpool *pool, const struct adata *l1, const struct adata *
   struct adata *res;
   int len = int_set_get_size(l2);
   u32 *l = int_set_get_data(l2);
-  u32 tmp[len];
+  u32 *tmp = tmp_alloc(sizeof(u32) * len);
   u32 *k = tmp;
   int i;
 
@@ -431,7 +431,7 @@ ec_set_union(struct linpool *pool, const struct adata *l1, const struct adata *l
   struct adata *res;
   int len = int_set_get_size(l2);
   u32 *l = int_set_get_data(l2);
-  u32 tmp[len];
+  u32 *tmp = tmp_alloc(sizeof(u32) * len);
   u32 *k = tmp;
   int i;
 
@@ -464,7 +464,7 @@ lc_set_union(struct linpool *pool, const struct adata *l1, const struct adata *l
   struct adata *res;
   int len = int_set_get_size(l2);
   u32 *l = int_set_get_data(l2);
-  u32 tmp[len];
+  u32 *tmp = tmp_alloc(sizeof(u32) * len);
   u32 *k = tmp;
   int i;
 
