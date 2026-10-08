@@ -75,7 +75,7 @@ setkey_md5(sockaddr *src, uint slen, sockaddr *dst, uint dlen, const char *passw
     sizeof(struct sadb_address) + PFKEY_ALIGN8(src->sa.sa_len) +
     sizeof(struct sadb_address) + PFKEY_ALIGN8(dst->sa.sa_len);
 
-  char *buf = alloca(total);
+  char *buf = tmp_alloc(total);
   char *pos = buf;
   uint len;
 

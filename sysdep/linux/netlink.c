@@ -1552,7 +1552,7 @@ nl_send_route(struct krt_proto *p, rte *e, int op)
   } *r;
 
   int rsize = sizeof(*r) + bufsize;
-  r = alloca(rsize);
+  r = tmp_alloc(rsize);
 
   DBG("nl_send_route(%N,op=%x)\n", net->n.addr, op);
 

@@ -172,7 +172,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   if (r->cmds)
   {
     /* Create a temporary table node */
-    e->net = alloca(sizeof(net) + r->net->length);
+    e->net = tmp_alloc(sizeof(net) + r->net->length);
     memset(e->net, 0, sizeof(net) + r->net->length);
     net_copy(e->net->n.addr, r->net);
 

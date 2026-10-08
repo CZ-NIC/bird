@@ -397,7 +397,7 @@ rip_check_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_
       return 0;
     }
 
-    byte *auth_data = alloca(auth_len);
+    byte *auth_data = tmp_alloc(auth_len);
     memcpy(auth_data, tail->auth_data, auth_len);
 
     /* Append key for keyed hash, append padding for HMAC (RFC 4822 2.5) */

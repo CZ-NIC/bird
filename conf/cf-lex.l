@@ -496,8 +496,8 @@ cf_include(char *arg, int alen)
   if (*arg != '/')
     {
       int dlen = strlen(ifs->file_name);
-      char *dir = alloca(dlen + 1);
-      patt = alloca(dlen + alen + 2);
+      char *dir = tmp_alloc(dlen + 1);
+      patt = tmp_alloc(dlen + alen + 2);
       memcpy(dir, ifs->file_name, dlen + 1);
       sprintf(patt, "%s/%s", dirname(dir), arg);
     }

@@ -389,7 +389,7 @@ fib_route(struct fib *f, const net_addr *n)
 {
   ASSERT(f->addr_type == n->type);
 
-  net_addr *n0 = alloca(n->length);
+  net_addr *n0 = tmp_alloc(n->length);
   net_copy(n0, n);
 
   switch (n->type)

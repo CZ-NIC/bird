@@ -522,7 +522,7 @@ enum aspa_result aspa_check(rtable *tab, const adata *path, bool force_upstream)
     return ASPA_INVALID;
 
   /* Normalize the AS Path: drop stuffings */
-  u32 *asns = alloca(sizeof(u32) * len);
+  u32 *asns = tmp_alloc(sizeof(u32) * len);
   uint ppos = 0;
   uint nsz = 0;
   while (as_path_walk(path, &ppos, &asns[nsz]))
@@ -1669,7 +1669,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   if (new)
     {
       /* Create a temporary table node */
-      nn = alloca(sizeof(net) + n->length);
+      nn = tmp_alloc(sizeof(net) + n->length);
       memset(nn, 0, sizeof(net) + n->length);
       net_copy(nn->n.addr, n);
 

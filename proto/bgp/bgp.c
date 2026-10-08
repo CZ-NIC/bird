@@ -3463,8 +3463,8 @@ bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
   uint any_add_path = 0;
   uint any_ext_next_hop = 0;
   uint any_llgr_able = 0;
-  u32 *afl1 = alloca(caps->af_count * sizeof(u32));
-  u32 *afl2 = alloca(caps->af_count * sizeof(u32));
+  u32 *afl1 = tmp_alloc(caps->af_count * sizeof(u32));
+  u32 *afl2 = tmp_alloc(caps->af_count * sizeof(u32));
   uint afn1, afn2;
 
   WALK_AF_CAPS(caps, ac)

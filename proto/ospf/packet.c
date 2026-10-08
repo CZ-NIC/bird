@@ -168,7 +168,7 @@ ospf_pkt_finalize3(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen, 
 
   /* Attach OSPFv3 Cryptographic Protocol ID to the key */
   uint pass_len = pass->length + 2;
-  byte *pass_key = alloca(pass_len);
+  byte *pass_key = tmp_alloc(pass_len);
   memcpy(pass_key, pass->password, pass->length);
   put_u16(pass_key + pass->length, OSPF3_CRYPTO_ID);
 
@@ -231,7 +231,7 @@ ospf_pkt_checkauth2(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf
     }
 
     byte *auth_tail = ((byte *) pkt) + plen;
-    byte *auth_data = alloca(auth_len);
+    byte *auth_data = tmp_alloc(auth_len);
     memcpy(auth_data, auth_tail, auth_len);
 
     /* Append key for keyed hash, append padding for HMAC (RFC 5709 3.3) */
@@ -359,7 +359,7 @@ ospf_pkt_checkauth3(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf
   }
 
   /* Save the received authentication data */
-  byte *auth_data = alloca(mac_len);
+  byte *auth_data = tmp_alloc(mac_len);
   memcpy(auth_data, auth->data, mac_len);
 
   /* Initialize with src IP address padded with HMAC_MAGIC */
@@ -368,7 +368,7 @@ ospf_pkt_checkauth3(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf
 
   /* Attach OSPFv3 Cryptographic Protocol ID to the key */
   uint pass_len = pass->length + 2;
-  byte *pass_key = alloca(pass_len);
+  byte *pass_key = tmp_alloc(pass_len);
   memcpy(pass_key, pass->password, pass->length);
   put_u16(pass_key + pass->length, OSPF3_CRYPTO_ID);
 

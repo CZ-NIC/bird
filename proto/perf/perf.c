@@ -35,7 +35,7 @@ static inline void
 random_data(void *p, uint len)
 {
   uint ints = (len + sizeof(int) - 1) / sizeof(int);
-  int *d = alloca(sizeof(uint) * ints);
+  int *d = tmp_alloc(sizeof(uint) * ints);
   for (uint i=0; i<ints; i++)
     d[i] = random();
 
