@@ -430,7 +430,7 @@ void
 ospf_rxmt_lsupd(struct ospf_proto *p, struct ospf_neighbor *n)
 {
   uint max = 2 * n->ifa->flood_queue_size;
-  struct top_hash_entry *entries[max];
+  struct top_hash_entry **entries = tmp_alloc(sizeof(struct top_hash_entry *) * max);
   struct top_hash_entry *ret, *nxt, *en;
   uint i = 0;
 

@@ -1447,7 +1447,7 @@ ospf_sh_lsadb(struct lsadb_show_data *ld)
   if (ld->router == SH_ROUTER_SELF)
     ld->router = p->router_id;
 
-  struct top_hash_entry *hea[num];
+  struct top_hash_entry **hea = tmp_alloc(sizeof(struct top_hash_entry *) * num);
   struct top_hash_entry *he;
 
   j = 0;

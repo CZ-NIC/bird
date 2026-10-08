@@ -440,7 +440,7 @@ clist_filter(struct linpool *pool, const struct adata *list, const struct f_val 
 
   int len = int_set_get_size(list);
   u32 *l = int_set_get_data(list);
-  u32 tmp[len];
+  u32 *tmp = tmp_alloc(sizeof(u32) * len);
   u32 *k = tmp;
   u32 *end = l + len;
 
@@ -471,7 +471,7 @@ eclist_filter(struct linpool *pool, const struct adata *list, const struct f_val
 
   int len = int_set_get_size(list);
   u32 *l = int_set_get_data(list);
-  u32 tmp[len];
+  u32 *tmp = tmp_alloc(sizeof(u32) * len);
   u32 *k = tmp;
   int i;
 
@@ -505,7 +505,7 @@ lclist_filter(struct linpool *pool, const struct adata *list, const struct f_val
 
   int len = int_set_get_size(list);
   u32 *l = int_set_get_data(list);
-  u32 tmp[len];
+  u32 *tmp = tmp_alloc(sizeof(u32) * len);
   u32 *k = tmp;
   int i;
 
