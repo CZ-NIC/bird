@@ -4161,10 +4161,10 @@ direction (re-import of routes from the BGP neighbor):
 	<item><cf/ignore otc/
 </itemize>
 
-<p>Note: Reload in the import direction requires either the <cf/route refresh/
-capability negotiated or the <cf/import table/ option enabled. If neither one is
-available, the reconfiguration will trigger a restart instead of a reload. This
-does not apply for export direction.
+<p>Note: Reload in the import direction requires the <cf/route refresh/
+capability negotiated, otherwise it will trigger a restart. In case of
+import filter change, routes will get reloaded from <cf/import table/
+instead, if enabled. None of these applies for export direction.
 
 <p>Changes in these channel options cause a reload of the channel in the export
 direction (re-export of routes to the BGP neighbor):
