@@ -63,6 +63,7 @@ Reply codes of BIRD command-line interface
 1025	Show Babel entries
 1026	Show MPLS ranges
 1027	Show threads
+1028	Show RAdv interfaces
 
 8000	Reply too long
 8001	Route not found
