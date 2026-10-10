@@ -189,6 +189,7 @@ struct bgp_channel_config {
   u8 require_ext_next_hop;		/* Require remote support of IPv4 NLRI with IPv6 next hops [RFC 8950] */
   u8 add_path;				/* Use ADD-PATH extension [RFC 7911] */
   u8 require_add_path;			/* Require remote support of ADD-PATH extension [RFC 7911] */
+  u8 ignore_otc;			/* Allow route even with wrong OTC attribute [RFC 9234] */
   u8 aigp;				/* AIGP is allowed on this session */
   u8 aigp_originate;			/* AIGP is originated automatically */
   u32 cost;				/* IGP cost for direct next hops */
