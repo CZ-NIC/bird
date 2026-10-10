@@ -13,6 +13,8 @@ struct rt_dev_config {
   struct proto_config c;
   list iface_list;		/* list of struct iface_patt */
   int check_link;
+  int host_routes;
+  int prefix_routes;
 
   struct channel_config *ip4_channel;
   struct channel_config *ip6_channel;

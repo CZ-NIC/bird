@@ -162,7 +162,7 @@ CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, CLASS, DSCP, PARTIAL)
 CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
-CF_KEYWORDS(CHECK, LINK)
+CF_KEYWORDS(CHECK, LINK, HOST, PREFIX)
 CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, ROA, DIGEST, ROUTE, REFRESH, SETTLE, TIME, GC, THRESHOLD, PERIOD)
 CF_KEYWORDS(MPLS_LABEL, MPLS_POLICY, MPLS_CLASS)
 CF_KEYWORDS(ASPA_PROVIDERS)
@@ -553,6 +553,7 @@ dev_proto_start: proto_start DIRECT {
      this_proto = proto_config_new(&proto_device, $1);
      init_list(&DIRECT_CFG->iface_list);
      this_proto->late_if_feed = 1;
+     DIRECT_CFG->prefix_routes = 1;
    }
  ;
 
@@ -562,6 +563,8 @@ dev_proto:
  | dev_proto proto_channel ';'
  | dev_proto dev_iface_patt ';'
  | dev_proto CHECK LINK bool ';' { DIRECT_CFG->check_link = $4; }
+ | dev_proto HOST bool ';' { DIRECT_CFG->host_routes = $3; }
+ | dev_proto PREFIX bool ';' { DIRECT_CFG->prefix_routes = $3; }
  ;
 
 dev_iface_init:

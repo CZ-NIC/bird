@@ -24,6 +24,7 @@
 #include "lib/resource.h"
 #include "lib/string.h"
 
+static void dev_update_route(struct channel *c, net_addr *net, struct ifa *ad, uint flags);
 
 static void
 dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
@@ -36,9 +37,6 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
   if (!EMPTY_LIST(cf->iface_list) &&
       !iface_patt_find(&cf->iface_list, ad->iface, ad))
     /* Empty list is automatically treated as "*" */
-    return;
-
-  if (ad->flags & IA_SECONDARY)
     return;
 
   if (ad->scope <= SCOPE_LINK)
@@ -61,12 +59,38 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
     net_fill_ip6_sadr(net, net6_prefix(&ad->prefix), net6_pxlen(&ad->prefix), IP6_NONE, 0);
   }
 
+  /* Update prefix routes but only if they aren't secondary */
+  if (cf->prefix_routes && !(ad->flags & IA_SECONDARY))
+    dev_update_route(c, net, ad, flags);
+
+  /* For host routes, replace regular prefix with the actual address */
+  if (cf->host_routes)
+  {
+    net = alloca(sizeof(net_addr_union));
+    if (ad->prefix.type == NET_IP4)
+    {
+      net_fill_ip4(net, ipa_to_ip4(ad->ip), IP4_MAX_PREFIX_LENGTH);
+      dev_update_route(c, net, ad, flags);
+    }
+    else if (ad->prefix.type == NET_IP6)
+    {
+      net_fill_ip6(net, ipa_to_ip6(ad->ip), IP6_MAX_PREFIX_LENGTH);
+      dev_update_route(c, net, ad, flags);
+    }
+  }
+}
+
+static void
+dev_update_route(struct channel *c, net_addr *net, struct ifa *ad, uint flags)
+{
+  struct rt_dev_config *cf = (void *) c->proto->cf;
+
   if (flags & IF_CHANGE_DOWN)
     {
       DBG("dev_if_notify: %s:%I going down\n", ad->iface->name, ad->ip);
 
       /* Use iface ID as local source ID */
-      struct rte_src *src = rt_get_source(P, ad->iface->index);
+      struct rte_src *src = rt_get_source(c->proto, ad->iface->index);
       rte_update(c, net, NULL, src);
       rt_unlock_source(src);
     }
@@ -78,7 +102,7 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 	return;
 
       /* Use iface ID as local source ID */
-      struct rte_src *src = rt_get_source(P, ad->iface->index);
+      struct rte_src *src = rt_get_source(c->proto, ad->iface->index);
 
       ea_list *ea = NULL;
       struct nexthop_adata nhad = {
