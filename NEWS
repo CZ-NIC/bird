@@ -1,3 +1,6 @@
+Version 3.4.0 (2026-10-12)
+  o Merged 2.20.0
+
 Version 3.3.0 (2026-05-25)
   o BGP: Export memory consumption optimization
   o BGP: Fix hostentry handling of MPLS and EVPN routes
