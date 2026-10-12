@@ -1,3 +1,13 @@
+Version 2.20.0 (2026-10-12)
+  o BGP: Allow ignoring OTC
+  o BGP: EVPN ESI attribute support
+  o Direct: Allow generating host routes
+  o RAdv: Add "show radv interfaces" CLI command
+  o Netlink: Improvements in error conditions
+  o Netlink: Learn interface MAC addresses
+  o Lib: Refactoring for later VPN route target merge
+  o Various fixes in code, comments, documentation and tooling
+
 Version 2.19.0 (2026-05-25)
   o BGP/MPLS Ethernet VPNs using VXLAN tunnels
   o BGP: PMSI tunnel attribute
