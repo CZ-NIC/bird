@@ -2687,18 +2687,21 @@ net_flow_has_dst_prefix(const net_addr *n)
 {
   ASSUME(net_is_flow(n));
 
-  if (n->pxlen)
-    return 1;
-
   if (n->type == NET_FLOW4)
   {
-    const net_addr_flow4 *n4 = (void *) n;
-    return (n4->length > sizeof(net_addr_flow4)) && (n4->data[0] == FLOW_TYPE_DST_PREFIX);
+    /* Shortcut */
+    if (n->pxlen)
+      return 1;
+
+    /* RFC 8955 6. a) Flowspec has defined dst prefix */
+    const byte *part = flow4_first_part((const net_addr_flow4 *) n);
+    return part && (part[0] == FLOW_TYPE_DST_PREFIX);
   }
   else
   {
-    const net_addr_flow6 *n6 = (void *) n;
-    return (n6->length > sizeof(net_addr_flow6)) && (n6->data[0] == FLOW_TYPE_DST_PREFIX);
+    /* RFC 8956 5. Flowspec has defined dst prefix with zero offset */
+     const byte *part = flow6_first_part((const net_addr_flow6 *) n);
+     return part && (part[0] == FLOW_TYPE_DST_PREFIX) && (part[2] == 0);
   }
 }
 
