@@ -201,11 +201,11 @@ bt_fmt_bytestr(char *buf, size_t size, const void *data_)
     return;
   }
 
-  char *tmp = allocz(data->len + 1);
+  char *tmp = allocz(2 * data->len + 1);
   char *t = tmp;
 
   for (int i = 0; i < data->len; i++)
-    t += bsprintf(t, "%hx", data->buf[i]);
+    t += bsprintf(t, "%02x", data->buf[i]);
 
   snprintf(buf, size, "0x%s", tmp);
 }
