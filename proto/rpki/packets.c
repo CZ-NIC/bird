@@ -906,7 +906,7 @@ rpki_handle_aspa_pdu(struct rpki_cache *cache, const struct pdu_header *pdu)
 {
   struct pdu_aspa *aspa = (void *) pdu;
   struct channel *channel = cache->p->aspa_channel;
-  uint providers_length = aspa->len - sizeof(struct pdu_aspa);
+  uint providers_length = rpki_pdu_aspa_provider_asn_count(aspa) * sizeof(u32);
 
   if (!channel)
   {
