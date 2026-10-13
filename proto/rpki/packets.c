@@ -766,6 +766,8 @@ rpki_handle_cache_response_pdu(struct rpki_cache *cache, const struct pdu_cache_
 	rt_refresh_begin(cache->p->roa4_channel->table, cache->p->roa4_channel);
       if (cache->p->roa6_channel)
 	rt_refresh_begin(cache->p->roa6_channel->table, cache->p->roa6_channel);
+      if (cache->p->aspa_channel)
+	rt_refresh_begin(cache->p->aspa_channel->table, cache->p->aspa_channel);
 
       cache->p->refresh_channels = 1;
     }
