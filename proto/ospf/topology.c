@@ -114,7 +114,7 @@ ospf_advance_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_ls
 {
   /* RFC 2328 13.4 */
 
-  if (en && (en->lsa.age < LSA_MAXAGE))
+  if (en && (en->lsa.age < LSA_MAXAGE) && (en->lsa.rt == p->router_id))
   {
     if (lsa->sn != LSA_MAXSEQNO)
     {
