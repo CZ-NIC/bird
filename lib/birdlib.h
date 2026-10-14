@@ -18,6 +18,7 @@
 
 extern char invalid_nonzero_pointer[0];
 #define SAME_TYPE(a, b)	({ int _ = ((a) != (b)); !_; })
+#define TYPE_CHECK(type, val)  ({ type _x UNUSED = (val); })
 #define TYPE_CAST(from, to, what) ( SAME_TYPE(((from) invalid_nonzero_pointer), (what)), ((to) (what)))
 
 #define OFFSETOF(s, i) ((size_t) &((s *)0)->i)

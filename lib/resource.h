@@ -103,6 +103,15 @@ void *sl_alloc(slab *);
 void *sl_allocz(slab *);
 void sl_free(void *);
 
+#define SLAB(type)		struct { slab *slab; type *node[0]; }
+#define SLAB_TYPE(s)		typeof(*(s).node[0])
+#define SLAB_IN(s)		((s).slab)
+
+#define SL_INIT(s, p)		({ SLAB_IN(s) = sl_new(p, sizeof(SLAB_TYPE(s))); })
+#define SL_ALLOC(s)		((SLAB_TYPE(s) *) sl_alloc(SLAB_IN(s)))
+#define SL_ALLOCZ(s)		((SLAB_TYPE(s) *) sl_allocz(SLAB_IN(s)))
+#define SL_FREE(s, n)		({ TYPE_CHECK(SLAB_TYPE(s) *, n); sl_free((void *) (n)); })
+
 /*
  * Low-level memory allocation functions, please don't use
  * outside resource manager and possibly sysdep code.
