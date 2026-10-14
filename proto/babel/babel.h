@@ -193,10 +193,10 @@ struct babel_proto {
   u8 update_seqno_inc;			/* Request for update_seqno increase */
   u8 triggered;				/* For triggering global updates */
 
-  slab *route_slab;
-  slab *source_slab;
-  slab *msg_slab;
-  slab *seqno_slab;
+  SLAB(struct babel_route) route_slab;
+  SLAB(struct babel_source) source_slab;
+  SLAB(struct babel_msg_node) msg_slab;
+  SLAB(struct babel_seqno_request) seqno_slab;
 
   struct tbf log_pkt_tbf;		/* TBF for packet messages */
 };

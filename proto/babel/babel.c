@@ -118,7 +118,7 @@ babel_get_source(struct babel_proto *p, struct babel_entry *e, u64 router_id,
   if (s)
     return s;
 
-  s = sl_allocz(p->source_slab);
+  s = SL_ALLOCZ(p->source_slab);
   s->router_id = router_id;
   s->expires = current_time() + BABEL_GARBAGE_INTERVAL;
   s->seqno = initial_seqno;
@@ -139,7 +139,7 @@ babel_expire_sources(struct babel_proto *p UNUSED, struct babel_entry *e)
     if (n->expires && n->expires <= now_)
     {
       rem_node(NODE n);
-      sl_free(n);
+      SL_FREE(p->source_slab, n);
     }
   }
 }
@@ -164,7 +164,7 @@ babel_get_route(struct babel_proto *p, struct babel_entry *e, struct babel_neigh
   if (r)
     return r;
 
-  r = sl_allocz(p->route_slab);
+  r = SL_ALLOCZ(p->route_slab);
 
   r->e = e;
   r->neigh = nbr;
@@ -195,7 +195,7 @@ babel_flush_route(struct babel_proto *p UNUSED, struct babel_route *r)
   if (r->e->selected == r)
     r->e->selected = NULL;
 
-  sl_free(r);
+  SL_FREE(p->route_slab, r);
 }
 
 static void
@@ -336,7 +336,7 @@ babel_add_seqno_request(struct babel_proto *p, struct babel_entry *e,
     }
 
   /* No entries found */
-  sr = sl_allocz(p->seqno_slab);
+  sr = SL_ALLOCZ(p->seqno_slab);
   sr->forwarded = !!target;
 
 found:
@@ -383,7 +383,7 @@ static void
 babel_remove_seqno_request(struct babel_proto *p UNUSED, struct babel_seqno_request *sr)
 {
   rem_node(NODE sr);
-  sl_free(sr);
+  SL_FREE(p->seqno_slab, sr);
 }
 
 static int
@@ -2582,10 +2582,10 @@ babel_start(struct proto *P)
   if (cf->randomize_router_id)
     babel_randomize_router_id(p);
 
-  p->route_slab = sl_new(P->pool, sizeof(struct babel_route));
-  p->source_slab = sl_new(P->pool, sizeof(struct babel_source));
-  p->msg_slab = sl_new(P->pool, sizeof(struct babel_msg_node));
-  p->seqno_slab = sl_new(P->pool, sizeof(struct babel_seqno_request));
+  SL_INIT(p->route_slab, P->pool);
+  SL_INIT(p->source_slab, P->pool);
+  SL_INIT(p->msg_slab, P->pool);
+  SL_INIT(p->seqno_slab, P->pool);
 
   p->log_pkt_tbf = (struct tbf){ .rate = 1, .burst = 5 };
 

@@ -1550,7 +1550,7 @@ void
 babel_send_unicast(union babel_msg *msg, struct babel_iface *ifa, ip_addr dest)
 {
   struct babel_proto *p = ifa->proto;
-  struct babel_msg_node *msgn = sl_alloc(p->msg_slab);
+  struct babel_msg_node *msgn = SL_ALLOC(p->msg_slab);
   list queue;
 
   *msgn = (struct babel_msg_node) { .msg = *msg };
@@ -1579,7 +1579,7 @@ void
 babel_enqueue(union babel_msg *msg, struct babel_iface *ifa)
 {
   struct babel_proto *p = ifa->proto;
-  struct babel_msg_node *msgn = sl_alloc(p->msg_slab);
+  struct babel_msg_node *msgn = SL_ALLOC(p->msg_slab);
 
   *msgn = (struct babel_msg_node) { .msg = *msg };
   add_tail(&ifa->msg_queue, NODE msgn);
@@ -1664,7 +1664,7 @@ babel_process_packet(struct babel_iface *ifa,
      structures. */
   WALK_TLVS(FIRST_TLV(pkt), end, tlv, frame_err, saddr, ifa->iface->name)
   {
-    msg = sl_allocz(p->msg_slab);
+    msg = SL_ALLOCZ(p->msg_slab);
     res = babel_read_tlv(tlv, &msg->msg, &state);
     if (res == PARSE_SUCCESS)
     {
@@ -1673,13 +1673,13 @@ babel_process_packet(struct babel_iface *ifa,
     else if (res == PARSE_IGNORE)
     {
       DBG("Babel: Ignoring TLV of type %d\n", tlv->type);
-      sl_free(msg);
+      SL_FREE(p->msg_slab, msg);
     }
     else /* PARSE_ERROR */
     {
       LOG_PKT("Bad TLV from %I via %s type %d pos %d - parse error",
 	      saddr, ifa->iface->name, tlv->type, (int) ((byte *)tlv - (byte *)pkt));
-      sl_free(msg);
+      SL_FREE(p->msg_slab, msg);
       break;
     }
   }
@@ -1691,7 +1691,7 @@ babel_process_packet(struct babel_iface *ifa,
     if (tlv_data[msg->msg.type].handle_tlv)
       tlv_data[msg->msg.type].handle_tlv(&msg->msg, ifa);
     rem_node(NODE msg);
-    sl_free(msg);
+    SL_FREE(p->msg_slab, msg);
   }
 }
 
