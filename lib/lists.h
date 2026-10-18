@@ -87,4 +87,48 @@ void insert_node(node *, node *);
 uint list_length(list *);
 #endif
 
+
+#define TYPE_CHECKx(type, val)	({ type _x UNUSED = val; })
+
+
+#define LIST(type)		LIST_(type, 0)
+#define LIST2(type, pos)	LIST_(type, offsetof(type, pos))
+#define LIST_(type, off)	struct { list list; type *node[0]; char offset[0][off]; }
+#define LIST_TYPE(l)		typeof(*(l).node[0])
+#define LIST_OFFSET(l)		sizeof(typeof((l).offset[0]))
+
+#define LIST_IN(l)		(&(l).list)
+#define NODE_IN(l, n)		({ TYPE_CHECK(LIST_TYPE(l) *, n); (node *) ((char *) (n) + LIST_OFFSET(l)); })
+#define NODE_OUT(l, n)		({ TYPE_CHECK(node *, n); (LIST_TYPE(l) *) ((char *) (n) - LIST_OFFSET(l)); })
+
+#define INIT_LIST(l, pos)						\
+  ({									\
+    STATIC_ASSERT(TYPE_EQUAL(MEMBER_TYPE(LIST_TYPE(l), pos), node));	\
+    STATIC_ASSERT(LIST_OFFSET(l) == offsetof(LIST_TYPE(l), pos));	\
+    init_list(LIST_IN(l));						\
+  })
+
+#define ADD_TAIL(l, n)		add_tail(LIST_IN(l), NODE_IN(l, n))
+#define ADD_HEAD(l, n)		add_head(LIST_IN(l), NODE_IN(l, n))
+#define REM_NODE(l, n)		rem_node(NODE_IN(l, n))
+
+#define LIST_WALK_(l, n) \
+  for(node *_nn=l.list.head; NODE_VALID(_nn) && (n = NODE_OUT(l, _nn)); _nn=_nn->next)
+
+#define LIST_WALK_DELSAFE_(l, n) \
+  for(node *_nn=l.list.head; NODE_VALID(_nn) && (n = NODE_OUT(l, _nn)) && (_nn=_nn->next, 1);)
+
+#define LIST_WALK_FIRST_(l, n) \
+  for(node *_nn=l.list.head; NODE_VALID(_nn) && (n = NODE_OUT(l, _nn)); _nn=l.list.head)
+
+#define LIST_WALK(l, n) \
+  WITH(LIST_TYPE(l) *, n, NULL) LIST_WALK_(l, n)
+
+#define LIST_WALK_DELSAFE(l, n) \
+  WITH(LIST_TYPE(l) *, n, NULL) LIST_WALK_DELSAFE_(l, n)
+
+#define LIST_WALK_FIRST(l, n) \
+  WITH(LIST_TYPE(l) *, n, NULL) LIST_WALK_FIRST_(l, n)
+
+
 #endif
