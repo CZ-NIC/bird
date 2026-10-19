@@ -441,7 +441,7 @@ rip_get_neighbor(struct rip_proto *p, ip_addr *a, struct rip_iface *ifa)
   nbr->data = n;
   n->csn = nbr->aux;
 
-  add_tail(&ifa->neigh_list, NODE n);
+  ADD_TAIL(ifa->neigh_list, n);
 
   return n;
 }
@@ -453,7 +453,7 @@ rip_remove_neighbor(struct rip_proto *p, struct rip_neighbor *n)
 
   TRACE(D_EVENTS, "Removing neighbor %I on %s", nbr->addr, nbr->ifreq->name);
 
-  rem_node(NODE n);
+  REM_NODE(n->ifa->neigh_list, n);
   n->ifa = NULL;
   n->nbr = NULL;
   nbr->data = NULL;
@@ -597,7 +597,7 @@ rip_iface_stop(struct rip_iface *ifa)
   if (ifa->cf->demand_circuit && !ifa->cf->passive)
     rip_send_flush(p, ifa);
 
-  WALK_LIST_FIRST(n, ifa->neigh_list)
+  WALK_LISTX_FIRST(n, ifa->neigh_list)
     rip_remove_neighbor(p, n);
 
   tm_stop(ifa->timer);
@@ -651,7 +651,7 @@ rip_iface_update_bfd(struct rip_iface *ifa)
   struct rip_proto *p = ifa->rip;
   struct rip_neighbor *n;
 
-  WALK_LIST(n, ifa->neigh_list)
+  WALK_LISTX(n, ifa->neigh_list)
     rip_update_bfd(p, n);
 }
 
@@ -678,7 +678,7 @@ rip_find_iface(struct rip_proto *p, struct iface *what)
 {
   struct rip_iface *ifa;
 
-  WALK_LIST(ifa, p->iface_list)
+  WALK_LISTX(ifa, p->iface_list)
     if (ifa->iface == what)
       return ifa;
 
@@ -710,9 +710,9 @@ rip_add_iface(struct rip_proto *p, struct iface *iface, struct rip_iface_config 
    * TODO: move this to sysdep code
    */
 
-  init_list(&ifa->neigh_list);
+  INIT_LIST(ifa->neigh_list, n);
 
-  add_tail(&p->iface_list, NODE ifa);
+  ADD_TAIL(p->iface_list, ifa);
 
   ifa->timer = tm_new_init(p->p.pool, rip_iface_timer, ifa, 0, 0);
   ifa->rxmt_timer = tm_new_init(p->p.pool, rip_rxmt_timeout, ifa, 0, 0);
@@ -735,7 +735,7 @@ rip_remove_iface(struct rip_proto *p, struct rip_iface *ifa)
 
   TRACE(D_EVENTS, "Removing interface %s", ifa->iface->name);
 
-  rem_node(NODE ifa);
+  REM_NODE(p->iface_list, ifa);
 
   rfree(ifa->sk);
   rfree(ifa->lock);
@@ -902,7 +902,7 @@ rip_timer(timer *t)
   struct rip_proto *p = t->data;
   struct rip_config *cf = (void *) (p->p.cf);
   struct rip_iface *ifa;
-  struct rip_neighbor *n, *nn;
+  struct rip_neighbor *n;
   struct fib_iterator fit;
   btime now_ = current_time();
   btime next = now_ + MIN(cf->min_timeout_time, cf->max_garbage_time);
@@ -973,13 +973,13 @@ rip_timer(timer *t)
   p->rt_reload = 0;
 
   /* Handling neighbor expiration */
-  WALK_LIST(ifa, p->iface_list)
+  WALK_LISTX(ifa, p->iface_list)
   {
     /* No expiration for demand circuit ifaces */
     if (ifa->cf->demand_circuit)
       continue;
 
-    WALK_LIST_DELSAFE(n, nn, ifa->neigh_list)
+    WALK_LISTX_DELSAFE(n, ifa->neigh_list)
       if (n->last_seen)
       {
 	expires = n->last_seen + n->ifa->cf->timeout_time;
@@ -1070,7 +1070,7 @@ rip_trigger_update(struct rip_proto *p)
     return;
 
   struct rip_iface *ifa;
-  WALK_LIST(ifa, p->iface_list)
+  WALK_LISTX(ifa, p->iface_list)
   {
     /* Interface not active */
     if (! ifa->up)
@@ -1150,7 +1150,7 @@ rip_start(struct proto *P)
   struct rip_proto *p = (void *) P;
   struct rip_config *cf = (void *) (P->cf);
 
-  init_list(&p->iface_list);
+  INIT_LIST(p->iface_list, n);
   fib_init(&p->rtable, P->pool, cf->rip2 ? NET_IP4 : NET_IP6,
 	   sizeof(struct rip_entry), OFFSETOF(struct rip_entry, n), 0, NULL);
   p->rte_slab = sl_new(P->pool, sizeof(struct rip_rte));
@@ -1177,7 +1177,7 @@ rip_shutdown(struct proto *P)
   TRACE(D_EVENTS, "Shutdown requested");
 
   struct rip_iface *ifa;
-  WALK_LIST(ifa, p->iface_list)
+  WALK_LISTX(ifa, p->iface_list)
     rip_iface_stop(ifa);
 
   return PS_DOWN;
@@ -1262,13 +1262,13 @@ rip_show_interfaces(struct proto *P, const char *iff)
   cli_msg(-1021, "%-10s %-6s %6s %6s %7s",
 	  "Interface", "State", "Metric", "Nbrs", "Timer");
 
-  WALK_LIST(ifa, p->iface_list)
+  WALK_LISTX(ifa, p->iface_list)
   {
     if (iff && !patmatch(iff, ifa->iface->name))
       continue;
 
     int nbrs = 0;
-    WALK_LIST(n, ifa->neigh_list)
+    WALK_LISTX(n, ifa->neigh_list)
       if (n->last_seen)
 	nbrs++;
 
@@ -1297,12 +1297,12 @@ rip_show_neighbors(struct proto *P, const char *iff)
   cli_msg(-1022, "%-25s %-10s %6s %6s %7s",
 	  "IP address", "Interface", "Metric", "Routes", "Seen");
 
-  WALK_LIST(ifa, p->iface_list)
+  WALK_LISTX(ifa, p->iface_list)
   {
     if (iff && !patmatch(iff, ifa->iface->name))
       continue;
 
-    WALK_LIST(n, ifa->neigh_list)
+    WALK_LISTX(n, ifa->neigh_list)
     {
       if (!n->last_seen)
 	continue;
@@ -1335,7 +1335,7 @@ rip_dump(struct proto *P, struct dump_request *dreq)
   FIB_WALK_END;
 
   i = 0;
-  WALK_LIST(ifa, p->iface_list)
+  WALK_LISTX(ifa, p->iface_list)
   {
     RDUMP("RIP: interface #%d: %s, %I, up = %d, busy = %d\n",
 	  i++, ifa->iface->name, ifa->sk ? ifa->sk->daddr : IPA_NONE,
