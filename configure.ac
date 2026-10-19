@@ -60,6 +60,24 @@ AC_ARG_ENABLE([mpls-kernel],
   [enable_mpls_kernel=try]
 )
 
+AC_ARG_ENABLE([sanitize],
+  [AS_HELP_STRING([--enable-sanitize], [enable address and undefined behaviour sanitization @<:@no@:>@])],
+  [],
+  [enable_sanitize=no]
+)
+
+AC_ARG_ENABLE([asan],
+  [AS_HELP_STRING([--enable-asan], [enable address sanitization @<:@no@:>@])],
+  [],
+  [enable_asan=no]
+)
+
+AC_ARG_ENABLE([ubsan],
+  [AS_HELP_STRING([--enable-ubsan], [enable undefined behaviour sanitization @<:@no@:>@])],
+  [],
+  [enable_ubsan=no]
+)
+
 AC_ARG_WITH([protocols],
   [AS_HELP_STRING([--with-protocols=LIST], [include specified routing protocols @<:@all@:>@])],
   [],
@@ -203,6 +221,21 @@ if test "$bird_cflags_default" = yes ; then
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_missing_init], [-Wno-missing-field-initializers])
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_watomic_implicit_seq_cst], [-Watomic-implicit-seq-cst])
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_werror_implicit_function_declaration], [-Werror=implicit-function-declaration])
+fi
+
+if test "$enable_sanitize" = yes; then
+  enable_asan=yes
+  enable_ubsan=yes
+fi
+
+if test "$enable_asan" = yes; then
+  CFLAGS="$CFLAGS -fsanitize=address"
+  LDFLAGS="$LDFLAGS -fsanitize=address"
+fi
+
+if test "$enable_ubsan" = yes; then
+  CFLAGS="$CFLAGS -fsanitize=undefined"
+  LDFLAGS="$LDFLAGS -fsanitize=undefined"
 fi
 
 
@@ -555,6 +588,8 @@ AC_MSG_RESULT([        Object directory:	$objdir])
 AC_MSG_RESULT([        Iproute2 directory:	$iproutedir])
 AC_MSG_RESULT([        System configuration:	$sysdesc])
 AC_MSG_RESULT([        Debugging:		$enable_debug])
+AC_MSG_RESULT([        ASAN:			$enable_asan])
+AC_MSG_RESULT([        UBSAN:			$enable_ubsan])
 AC_MSG_RESULT([        Link-time optimization: $enable_lto])
 AC_MSG_RESULT([        Compact tries:		$enable_compact_tries])
 AC_MSG_RESULT([        Routing protocols:	$protocols])
