@@ -14,16 +14,33 @@
 #include <stdarg.h>
 #include <stdalign.h>
 
-/* Ugly structure offset handling macros */
 
-extern char invalid_nonzero_pointer[0];
-#define SAME_TYPE(a, b)	({ int _ = ((a) != (b)); !_; })
-#define TYPE_CAST(from, to, what) ( SAME_TYPE(((from) invalid_nonzero_pointer), (what)), ((to) (what)))
+#define TYPE_EQUAL(type1, type2) \
+  __builtin_types_compatible_p(type1 *, type2 *)
+
+#define TYPE_CHECK(type, val) \
+  STATIC_ASSERT(TYPE_EQUAL(type, typeof(val)))
+
+#define TYPE_CAST(from, to, val) \
+  ({ TYPE_CHECK(from, val); (to) (val) })
+
+#define CHECKED_CAST(from, to, cond, val) \
+  ({ TYPE_CHECK(from, val); ASSERT(cond); (to) (val) })
+
+#define CAST_PROTO_OSPF(val) \
+  CHECKED_CAST(struct proto *, struct proto_ospf *, (val)->proto == &proto_ospf, val)
+
+#define MEMBER_TYPE(type, member) \
+  typeof(((type *) NULL)->member)
+
+
+/* Ugly structure offset handling macros */
 
 #define OFFSETOF(s, i) ((size_t) &((s *)0)->i)
 #define SKIP_BACK(s, i, p) ((s *)((char *)p - OFFSETOF(s, i)))
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
 #define CPU_STRUCT_ALIGN (alignof(max_align_t))
+
 
 /* Utility macros */
 
@@ -48,6 +65,9 @@ extern char invalid_nonzero_pointer[0];
 #define BYTES(n) ((((uint) (n)) + 7) / 8)
 #define CALL(fn, args...) ({ if (fn) fn(args); })
 #define ADVANCE(w, r, l) ({ r -= (l); w += (l); })
+
+#define WITH(type, var, expr) \
+  for (type var = (expr), *_dummy, **_once = &_dummy; _once; _once = NULL)
 
 static inline int uint_cmp(uint i1, uint i2)
 { return (int)(i1 > i2) - (int)(i1 < i2); }
