@@ -578,7 +578,6 @@ static void
 rip_iface_stop(struct rip_iface *ifa)
 {
   struct rip_proto *p = ifa->rip;
-  struct rip_neighbor *n;
 
   TRACE(D_EVENTS, "Stopping interface %s", ifa->iface->name);
 
@@ -597,7 +596,7 @@ rip_iface_stop(struct rip_iface *ifa)
   if (ifa->cf->demand_circuit && !ifa->cf->passive)
     rip_send_flush(p, ifa);
 
-  WALK_LISTX_FIRST(n, ifa->neigh_list)
+  LIST_WALK_FIRST(ifa->neigh_list, n)
     rip_remove_neighbor(p, n);
 
   tm_stop(ifa->timer);
@@ -649,9 +648,8 @@ static inline void
 rip_iface_update_bfd(struct rip_iface *ifa)
 {
   struct rip_proto *p = ifa->rip;
-  struct rip_neighbor *n;
 
-  WALK_LISTX(n, ifa->neigh_list)
+  LIST_WALK(ifa->neigh_list, n)
     rip_update_bfd(p, n);
 }
 
@@ -676,9 +674,7 @@ rip_iface_locked(struct object_lock *lock)
 static struct rip_iface *
 rip_find_iface(struct rip_proto *p, struct iface *what)
 {
-  struct rip_iface *ifa;
-
-  WALK_LISTX(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
     if (ifa->iface == what)
       return ifa;
 
@@ -901,8 +897,6 @@ rip_timer(timer *t)
 {
   struct rip_proto *p = t->data;
   struct rip_config *cf = (void *) (p->p.cf);
-  struct rip_iface *ifa;
-  struct rip_neighbor *n;
   struct fib_iterator fit;
   btime now_ = current_time();
   btime next = now_ + MIN(cf->min_timeout_time, cf->max_garbage_time);
@@ -973,13 +967,13 @@ rip_timer(timer *t)
   p->rt_reload = 0;
 
   /* Handling neighbor expiration */
-  WALK_LISTX(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
   {
     /* No expiration for demand circuit ifaces */
     if (ifa->cf->demand_circuit)
       continue;
 
-    WALK_LISTX_DELSAFE(n, ifa->neigh_list)
+    LIST_WALK_DELSAFE(ifa->neigh_list, n)
       if (n->last_seen)
       {
 	expires = n->last_seen + n->ifa->cf->timeout_time;
@@ -1069,8 +1063,7 @@ rip_trigger_update(struct rip_proto *p)
   if (p->triggered)
     return;
 
-  struct rip_iface *ifa;
-  WALK_LISTX(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
   {
     /* Interface not active */
     if (! ifa->up)
@@ -1176,8 +1169,7 @@ rip_shutdown(struct proto *P)
 
   TRACE(D_EVENTS, "Shutdown requested");
 
-  struct rip_iface *ifa;
-  WALK_LISTX(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
     rip_iface_stop(ifa);
 
   return PS_DOWN;
@@ -1249,8 +1241,6 @@ void
 rip_show_interfaces(struct proto *P, const char *iff)
 {
   struct rip_proto *p = (void *) P;
-  struct rip_iface *ifa = NULL;
-  struct rip_neighbor *n = NULL;
 
   if (p->p.proto_state != PS_UP)
   {
@@ -1262,13 +1252,13 @@ rip_show_interfaces(struct proto *P, const char *iff)
   cli_msg(-1021, "%-10s %-6s %6s %6s %7s",
 	  "Interface", "State", "Metric", "Nbrs", "Timer");
 
-  WALK_LISTX(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
   {
     if (iff && !patmatch(iff, ifa->iface->name))
       continue;
 
     int nbrs = 0;
-    WALK_LISTX(n, ifa->neigh_list)
+    LIST_WALK(ifa->neigh_list, n)
       if (n->last_seen)
 	nbrs++;
 
@@ -1284,8 +1274,6 @@ void
 rip_show_neighbors(struct proto *P, const char *iff)
 {
   struct rip_proto *p = (void *) P;
-  struct rip_iface *ifa = NULL;
-  struct rip_neighbor *n = NULL;
 
   if (p->p.proto_state != PS_UP)
   {
@@ -1297,12 +1285,12 @@ rip_show_neighbors(struct proto *P, const char *iff)
   cli_msg(-1022, "%-25s %-10s %6s %6s %7s",
 	  "IP address", "Interface", "Metric", "Routes", "Seen");
 
-  WALK_LISTX(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
   {
     if (iff && !patmatch(iff, ifa->iface->name))
       continue;
 
-    WALK_LISTX(n, ifa->neigh_list)
+    LIST_WALK(ifa->neigh_list, n)
     {
       if (!n->last_seen)
 	continue;
@@ -1318,7 +1306,6 @@ static void
 rip_dump(struct proto *P, struct dump_request *dreq)
 {
   struct rip_proto *p = (struct rip_proto *) P;
-  struct rip_iface *ifa;
   int i;
 
   i = 0;
@@ -1335,7 +1322,7 @@ rip_dump(struct proto *P, struct dump_request *dreq)
   FIB_WALK_END;
 
   i = 0;
-  WALK_LISTX(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
   {
     RDUMP("RIP: interface #%d: %s, %I, up = %d, busy = %d\n",
 	  i++, ifa->iface->name, ifa->sk ? ifa->sk->daddr : IPA_NONE,
