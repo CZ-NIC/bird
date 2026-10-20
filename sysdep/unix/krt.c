@@ -474,7 +474,6 @@ aseen:
 
 update:
   krt_trace_in(p, new, "updating");
-  log("updating old %N %i %p for %N %i %p", e->net, e->id, e, new->net, e->id, new);
   krt_replace_rte(p, e->net, new, e);
   goto done;
 

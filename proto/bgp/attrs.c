@@ -3081,7 +3081,6 @@ bgp_rte_better(const rte *new, const rte *old)
   struct bgp_proto *old_bgp = bgp_rte_proto(old);
   eattr *x, *y;
   u32 n, o;
-  log("bgp_rte_better new %N", new->net);
 
   /* Skip suppressed routes (see bgp_rte_recalculate()) */
   n = new->pflags & BGP_REF_SUPPRESSED;
@@ -3132,14 +3131,6 @@ bgp_rte_better(const rte *new, const rte *old)
     y = ea_find(old->attrs, BGP_EA_ID(BA_AS_PATH));
     n = x ? as_path_getlen(x->u.ptr) : AS_PATH_MAXLEN;
     o = y ? as_path_getlen(y->u.ptr) : AS_PATH_MAXLEN;
-    log("/* RFC 4271 9.1.2.2. a)  Use AS path lengths */ n %i %s 0 %i %s", n, new->src->owner->name, o, old->src->owner->name);
-
-      byte bb[300];
-      as_path_format(x->u.ptr, bb, 300);
-        log("new %s", bb);
-        as_path_format(y->u.ptr, bb, 300);
-        log("old %s", bb);
-
     if (n < o)
       return 1;
     if (n > o)
@@ -3355,11 +3346,9 @@ bgp_rte_best(const rte **routes, u32 count)
     after_med_ptr++;
   }
 
-  //log("bgp_rte_best, count %i, after_med_ptr %i", count, after_med_ptr);
   const rte *best = after_med[0];
   for (u32 i = 1; i < after_med_ptr; i++)
   {
-    //log("bpg decide %N", after_med[i]->net);
     if (bgp_rte_better(after_med[i], best))
             best = after_med[i];
   }
@@ -3569,7 +3558,6 @@ bgp_rte_modify_stale(void *_bc)
 static void
 bgp_process_as4_attrs(ea_list **attrs, struct linpool *pool)
 {
-  log("bgp_process_as4_attrs");
   eattr *p2 = bgp_find_attr(*attrs, BA_AS_PATH);
   eattr *p4 = bgp_find_attr(*attrs, BA_AS4_PATH);
   eattr *a2 = bgp_find_attr(*attrs, BA_AGGREGATOR);
@@ -3605,7 +3593,6 @@ bgp_process_as4_attrs(ea_list **attrs, struct linpool *pool)
       return;
 
     /* Merge AS_PATH and AS4_PATH */
-    log("as_path_cut(pool, p2->u.ptr, p2_len %i - p4_len %i);", p2_len, p4_len);
     struct adata *apc = as_path_cut(pool, p2->u.ptr, p2_len - p4_len);
     p2->u.ptr = as_path_merge(pool, apc, p4->u.ptr);
   }

@@ -636,7 +636,7 @@ struct channel {
   struct bmap imported_map;		/* Which nets were touched by our import */
   struct bmap export_accepted_map;	/* Keeps track which routes were really exported */
   struct bmap export_rejected_map;	/* Keeps track which routes were rejected by export filter */
-  struct bmap export_best_map;    /* Keeps track which routes were chosen as best */
+  struct bmap export_best_map;      /* Keeps track which routes were chosen as best */
 
   struct limit rx_limit;		/* Receive limit (for in_keep & RIK_REJECTED) */
   struct limit in_limit;		/* Input limit */
@@ -670,9 +670,6 @@ struct channel {
   struct rt_import_request in_req;	/* Table import connection */
   struct rt_export_request out_req;	/* Table export connection */
   event out_event;			/* Table export event */
-  //struct rt_export_request alt_req;	/* Alternative export request */
-  //event alt_event;
-  //int (*alt_export)(const struct rt_prefilter *, const net_addr *);	/* Use the alt export for this net */
   bool one_refeed_seen;			/* Synchronize both refeeds */
   pool *export_pool;			/* Pool for export auxiliaries */
 

@@ -498,13 +498,11 @@ rt_aggregate_roa(void *_rag)
 {
   struct rt_roa_aggregator *rag = _rag;
 
-  //bug("nraeeeeeeeeeeeeeeedk src %s state %i", rag->src.name, rag->src.export_state);
   RT_EXPORT_WALK(&rag->src, u) TMP_SAVED
   {
     /* Watch updates in the main ROA table on the best feed. These should
      * provide us with an information whether there is or isn't some record
      * with that prefix, maxlen and ASN. */
-    //bug("in rt_aggregate_roa WALK");
     bool withdraw = 0;
     const net_addr *nroa = NULL;
     switch (u->kind)
@@ -1991,12 +1989,6 @@ channel_notify_merged(void *_channel)
   struct channel *c = _channel;
   struct rt_export_request *req = &c->out_req;
 
-  /* We need to take both all and best reqs. If it is all and we do not have best, we can wait for best*/
-  //if (c->alt_export)
-    //req = &c->alt_req; // TODO: altreq vzpustit i z evpn - best kdyztak prepocitat
-  //else
-  //  req = &c->out_req;
-
   RT_EXPORT_WALK(req, u)
   {
     switch (u->kind)
@@ -2334,12 +2326,8 @@ rte_better(const rte ** best_rte_preselection, const rte *new, const rte *old)
   if (!rte_is_valid(old))
     return NEW_RTE_BETTER;
 
-  log("rte_better %N %N", new->net, old->net);
   u32 np = rt_get_preference(new);
   u32 op = rt_get_preference(old);
-
-  if(np!= op)
-    log("pref");
 
   if (np > op)
     return NEW_RTE_BETTER;
@@ -2353,19 +2341,16 @@ rte_better(const rte ** best_rte_preselection, const rte *new, const rte *old)
        *  have the same preference, try to break the tie by comparing addresses. Not too
        *  useful, but keeps the ordering of routes unambiguous.
        */
-      log("class");
       return old->src->owner->class > new->src->owner->class;
   }
 
   int (*better)(const rte *, const rte *);
-  if (better = new->src->owner->class->rte_better){
-       // log("(better = new->src->owner->class->rte_better %s", new->src->owner->name);
-    return better(new, old);} /* Protocol is able to decide right now */
+  if (better = new->src->owner->class->rte_better)
+    return better(new, old); /* Protocol is able to decide right now */
 
-  if (best_rte_preselection[0]->src->owner->class->rte_best){log("cant choose");
-    return CANT_CHOOSE_BETTER;} /* Protocol needs more context to decide (bgp MED) */
+  if (best_rte_preselection[0]->src->owner->class->rte_best)
+    return CANT_CHOOSE_BETTER; /* Protocol needs more context to decide (bgp MED) */
 
-  //log("noooooo");
   return OLD_RTE_BETTER;
 }
 
@@ -2392,7 +2377,6 @@ rte_select_best(const rte **rte_for_selection, uint count)
 
   uint idx = 0; /* First free index in best_rte_preselection */
   const rte *old = NULL;
-  log("rte_select_best ");
 
   for (size_t i = 0; i < count; i++)
   {
@@ -3087,11 +3071,8 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, struct bmap *seen, bool (*p
       ASSERT_DIE(e == ecnt);
     }
 
-    rte * best_rte = rte_select_best_from_feed(feed->block, feed->count_routes);
-    if (best_rte == NULL)
-    /* all routes in feed are invalid */
-      return NULL;
-    feed->ni = NET_TO_INDEX(best_rte->net);
+    if (feed->count_routes)
+      feed->ni = NET_TO_INDEX(feed->block[0].net);
   }
 
   /* Check that it indeed didn't change and the last export is still the same. */
@@ -5838,7 +5819,6 @@ krt_export_net(struct channel *c, const net_addr *a, linpool *lp)
   if (c->ra_mode == RA_MERGED)
   {
     struct rt_export_feed *feed = rt_net_feed(c->table, a, NULL);
-    //log("krt_export_net c->ra_mode == RA_MERGED feed %p couint %i", feed, feed? feed->count_routes:0);
     if (!feed || !feed->count_routes)
       return NULL;
 
