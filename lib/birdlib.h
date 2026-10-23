@@ -41,8 +41,13 @@
 
 /* Ugly structure offset handling macros */
 
+#define SKIP_BACK_(s, i, p) \
+  ((s *)((char *)(p) - offsetof(s, i)))
+
+#define SKIP_BACK(s, i, p) \
+  ({ TYPE_CHECK(MEMBER_PTR_TYPE(s, i), p); SKIP_BACK_(s, i, p); })
+
 #define OFFSETOF(s, i) offsetof(s, i)
-#define SKIP_BACK(s, i, p) ((s *)((char *)p - OFFSETOF(s, i)))
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
 #define CPU_STRUCT_ALIGN (alignof(max_align_t))
 

@@ -426,7 +426,7 @@ mb_allocz(pool *p, unsigned size)
 void *
 mb_realloc(void *m, unsigned size)
 {
-  struct mblock *b = SKIP_BACK(struct mblock, data, m);
+  struct mblock *b = SKIP_BACK(struct mblock, data[0], (byte *) m);
 
   b = xrealloc(b, sizeof(struct mblock) + size);
   update_node(&b->r.n);
@@ -447,7 +447,7 @@ mb_free(void *m)
   if (!m)
     return;
 
-  struct mblock *b = SKIP_BACK(struct mblock, data, m);
+  struct mblock *b = SKIP_BACK(struct mblock, data[0], (byte *) m);
   rfree(b);
 }
 
