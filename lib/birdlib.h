@@ -41,7 +41,7 @@
 
 /* Ugly structure offset handling macros */
 
-#define OFFSETOF(s, i) ((size_t) &((s *)0)->i)
+#define OFFSETOF(s, i) offsetof(s, i)
 #define SKIP_BACK(s, i, p) ((s *)((char *)p - OFFSETOF(s, i)))
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
 #define CPU_STRUCT_ALIGN (alignof(max_align_t))
@@ -100,9 +100,6 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define BIT32R_CLR(b,p)		((b)[(p)/32] &= ~BIT32R_VAL(p))
 #define BIT32R_ZERO(b,l)	memset((b), 0, (l)/8)
 
-#ifndef NULL
-#define NULL ((void *) 0)
-#endif
 
 /* Macros for gcc attributes */
 
