@@ -562,7 +562,7 @@ bfd_reconfigure_session(struct bfd_proto *p, struct bfd_session *s)
 
   birdloop_enter(p->loop);
 
-  struct bfd_request *req = SKIP_BACK(struct bfd_request, n, HEAD(s->request_list));
+  struct bfd_request *req = SKIP_BACK(struct bfd_request, n, NODE HEAD(s->request_list));
   s->cf = bfd_merge_options(s->ifa->cf, &req->opts);
 
   u32 tx = (s->loc_state == BFD_STATE_UP) ? s->cf.min_tx_int : s->cf.idle_tx_int;

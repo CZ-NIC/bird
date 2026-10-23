@@ -117,7 +117,7 @@ alloc_page(void)
   /* If there is any free page kept hot, we use it. */
   if (fps->cnt)
   {
-    struct free_page *fp = SKIP_BACK(struct free_page, n, HEAD(fps->pages));
+    struct free_page *fp = SKIP_BACK(struct free_page, n, NODE HEAD(fps->pages));
     rem_node(&fp->n);
 
     /* If the hot-free-page cache is getting short, request the cleanup routine to replenish the cache */
@@ -200,7 +200,7 @@ global_free_pages_cleanup_event(void *data UNUSED)
   /* Or the hot free page cache is too big. Moving some pages to the cold free page cache. */
   for (int limit = CLEANUP_PAGES_BULK; limit && (fps->cnt > fps->max / 2); fps->cnt--, limit--)
   {
-    struct free_page *fp = SKIP_BACK(struct free_page, n, TAIL(fps->pages));
+    struct free_page *fp = SKIP_BACK(struct free_page, n, NODE TAIL(fps->pages));
     rem_node(&fp->n);
 
     /* Empty pages are stored as pointers. To store them, we need a pointer block. */

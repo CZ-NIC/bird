@@ -62,7 +62,7 @@ typedef union list {			/* In fact two overlayed nodes */
 #define WALK_LIST_FIRST(n,list) \
      while(n=HEAD(list), (NODE (n))->next)
 #define WALK_LIST_FIRST2(n,pos,list) \
-     while(n=SKIP_BACK(typeof(*n),pos,HEAD(list)), (n)->pos.next)
+     while(n=SKIP_BACK(typeof(*n),pos,(list).head), (n)->pos.next)
 #define WALK_LIST_BACKWARDS(n,list) for(n=TAIL(list);(NODE (n))->prev; \
 				n=(void *)((NODE (n))->prev))
 #define WALK_LIST_BACKWARDS_DELSAFE(n,prv,list) \

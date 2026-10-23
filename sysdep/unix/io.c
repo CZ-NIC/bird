@@ -2574,7 +2574,7 @@ io_loop(void)
 	  times_update(&main_timeloop);
 
 	  /* guaranteed to be non-empty */
-	  current_sock = SKIP_BACK(sock, n, HEAD(sock_list));
+	  current_sock = SKIP_BACK(sock, n, NODE HEAD(sock_list));
 
 	  while (current_sock)
 	    {
@@ -2624,7 +2624,7 @@ io_loop(void)
 	  int count = 0;
 	  current_sock = stored_sock;
 	  if (current_sock == NULL)
-	    current_sock = SKIP_BACK(sock, n, HEAD(sock_list));
+	    current_sock = SKIP_BACK(sock, n, NODE HEAD(sock_list));
 
 	  while (current_sock && count < MAX_RX_STEPS)
 	    {
