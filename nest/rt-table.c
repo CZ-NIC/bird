@@ -223,7 +223,7 @@ net *
 net_route(rtable *tab, const net_addr *n)
 {
   ASSERT(tab->addr_type == n->type);
-  net_addr_union *nu = SKIP_BACK(net_addr_union, n, n);
+  const net_addr_union *nu = SKIP_BACK(const net_addr_union, n, n);
 
 #define TW(ipv, what) \
   TRIE_WALK_TO_ROOT_IP##ipv(tab->trie, &(nu->ip##ipv), var) \
@@ -294,7 +294,7 @@ net_route(rtable *tab, const net_addr *n)
 int
 net_roa_check(rtable *tab, const net_addr *n, u32 asn)
 {
-  net_addr_union *nu = SKIP_BACK(net_addr_union, n, n);
+  const net_addr_union *nu = SKIP_BACK(const net_addr_union, n, n);
   int anything = 0;
   struct fib_node *fn;
 
