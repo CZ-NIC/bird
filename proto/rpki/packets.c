@@ -542,12 +542,10 @@ rpki_log_packet(struct rpki_cache *cache, const struct pdu_header *pdu, const en
     int provider_asn_count = rpki_pdu_aspa_provider_asn_count(aspa);
 
     if (provider_asn_count <= 0)
-      SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail),
-	    "%u transit", aspa->customer_as_num));
+      SAVE(bsnprintf(detail, sizeof(detail), "%u", aspa->customer_as_num));
     else
     {
-      SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail),
-	    "%u (providers", aspa->customer_as_num));
+      SAVE(bsnprintf(detail, sizeof(detail), "%u (providers", aspa->customer_as_num));
       for (int i = 0; i < provider_asn_count; i++)
 	SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail),
 	      " %u%c", aspa->provider_as_nums[i], (i == provider_asn_count-1) ? ')' : ','));
@@ -898,7 +896,7 @@ rpki_handle_aspa_pdu(struct rpki_cache *cache, const struct pdu_header *pdu)
 {
   struct pdu_aspa *aspa = (void *) pdu;
   struct channel *channel = cache->p->aspa_channel;
-  uint providers_length = aspa->len - sizeof(struct pdu_aspa);
+  uint providers_length = rpki_pdu_aspa_provider_asn_count(aspa) * sizeof(u32);
 
   if (!channel)
   {

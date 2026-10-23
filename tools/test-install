@@ -45,6 +45,11 @@ bird -c minimal.conf
 
 birdcl show proto > show-proto-out 2>&1
 birdcl down > down-out 2>&1
+
+# Wait until BIRD actually shuts down but not longer than 1 s.
+if [ -e /run/bird/bird.ctl ]; then
+  sleep 1
+fi
 birdcl show proto > show-proto-after-down-out 2>&1
 
 echo "Testing that BIRD can be started..."
