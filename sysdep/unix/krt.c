@@ -608,7 +608,7 @@ krt_scan_all(timer *t UNUSED)
   kif_force_scan();
 
   /* We need some node to decide whether to print the debug messages or not */
-  p = SKIP_BACK(struct krt_proto, krt_node, HEAD(krt_proto_list));
+  p = SKIP_BACK(struct krt_proto, krt_node, NODE HEAD(krt_proto_list));
   KRT_TRACE(p, D_EVENTS, "Scanning routing table");
 
   WALK_LIST2(p, n, krt_proto_list, krt_node)

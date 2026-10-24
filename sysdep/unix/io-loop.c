@@ -554,7 +554,7 @@ sockets_fire(struct birdloop *loop, bool read, bool write)
   times_update();
 
   struct pollfd *pfd = loop->thread->pfd->pfd.data;
-  loop->sock_active = SKIP_BACK(sock, n, HEAD(loop->sock_list));
+  loop->sock_active = SKIP_BACK(sock, n, NODE HEAD(loop->sock_list));
 
   while (loop->sock_active)
   {

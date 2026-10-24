@@ -169,7 +169,7 @@ static inline struct evpn_encap *
 evpn_get_encap(struct evpn_proto *p)
 {
   ASSERT(list_length(&p->encaps) == 1);
-  struct evpn_encap *encap = SKIP_BACK(struct evpn_encap, n, HEAD(p->encaps));
+  struct evpn_encap *encap = SKIP_BACK(struct evpn_encap, n, NODE HEAD(p->encaps));
 
   return encap;
 }
@@ -663,7 +663,7 @@ evpn_reconfigure_encaps(struct evpn_proto *p, struct evpn_config *cf)
   ASSERT(list_length(&cf->encaps) == 1);
 
   struct evpn_encap *e = evpn_get_encap(p);
-  struct evpn_encap_config *ec = SKIP_BACK(struct evpn_encap_config, n, HEAD(cf->encaps));
+  struct evpn_encap_config *ec = SKIP_BACK(struct evpn_encap_config, n, NODE HEAD(cf->encaps));
 
   if (!e || !ec)
     return 0;

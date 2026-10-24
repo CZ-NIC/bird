@@ -2720,7 +2720,7 @@ io_loop(void)
 	  times_update();
 
 	  /* guaranteed to be non-empty */
-	  main_birdloop.sock_active = SKIP_BACK(sock, n, HEAD(main_birdloop.sock_list));
+	  main_birdloop.sock_active = SKIP_BACK(sock, n, NODE HEAD(main_birdloop.sock_list));
 
 	  while (main_birdloop.sock_active)
 	  {
@@ -2770,7 +2770,7 @@ io_loop(void)
 	  int count = 0;
 	  main_birdloop.sock_active = stored_sock;
 	  if (main_birdloop.sock_active == NULL)
-	    main_birdloop.sock_active = SKIP_BACK(sock, n, HEAD(main_birdloop.sock_list));
+	    main_birdloop.sock_active = SKIP_BACK(sock, n, NODE HEAD(main_birdloop.sock_list));
 
 	  while (main_birdloop.sock_active && count < MAX_RX_STEPS)
 	    {
