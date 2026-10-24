@@ -46,12 +46,16 @@
 
 /* Ugly structure offset handling macros */
 
+#define SKIP_BACK_(s, i, p) \
+  ((s *)((char *)(p) - offsetof(s, i)))
+
+#define SKIP_BACK(s, i, p) \
+  ({ TYPE_CHECK(MEMBER_PTR_TYPE(s, i), p); SKIP_BACK_(s, i, p); })
+
+#define SKIP_BACK_DECLARE(s, n, i, p) \
+  s *n = SKIP_BACK(s, i, p)
+
 #define OFFSETOF(s, i) offsetof(s, i)
-#define SKIP_BACK(s, i, p) ({ \
-    typeof(p) _orig = p; \
-    s *_ptr = ((s *)((char *)_orig - OFFSETOF(s, i))); \
-    _ptr; })
-#define SKIP_BACK_DECLARE(s, n, i, p) s *n = SKIP_BACK(s, i, p)
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
 #define BIRD_SET_ALIGNED_POINTER(ptr, val)  do { \
   size_t _alignment = _Alignof(typeof(*ptr)); \

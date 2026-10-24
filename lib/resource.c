@@ -499,7 +499,7 @@ mb_allocz(pool *p, unsigned size)
 void *
 mb_realloc(void *m, unsigned size)
 {
-  SKIP_BACK_DECLARE(struct mblock, b, data, m);
+  SKIP_BACK_DECLARE(struct mblock, b, data[0], (byte *) m);
   struct pool *p = resource_parent(&b->r);
 
   ASSERT_DIE(DG_IS_LOCKED(p->domain));
@@ -524,7 +524,7 @@ mb_free(void *m)
   if (!m)
     return;
 
-  SKIP_BACK_DECLARE(struct mblock, b, data, m);
+  SKIP_BACK_DECLARE(struct mblock, b, data[0], (byte *) m);
   memset(m, POISON_MB_FREE, b->size);
   rfree(&b->r);
 }
