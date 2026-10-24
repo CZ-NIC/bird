@@ -54,8 +54,8 @@ kbr_trace(struct kbr_proto *p, const net_addr *n, const rte *e, char *msg, bool 
 {
   if (p->p.debug & D_PACKETS)
   {
-    struct nexthop_adata *nhad = rte_get_nexthops(e);
-    struct nexthop *nh = &nhad->nh;
+    const struct nexthop_adata *nhad = rte_get_nexthops(e);
+    const struct nexthop *nh = &nhad->nh;
 
     if (!nhad)
       log(L_TRACE "%s: %N (invalid nexthop)");
@@ -304,7 +304,7 @@ kbr_prune_fdb(struct kbr_proto *p, struct channel *c, const net_addr *n, rte *e)
     kbr_replace_fdb(p, n, new, NULL, false);
   }
 
-  struct nexthop_adata *nhad = rte_get_nexthops(e);
+  const struct nexthop_adata *nhad = rte_get_nexthops(e);
 
   if (ipa_nonzero(nhad->nh.gw) &&
       !bmap_test(&p->seen_map[1], new->id))
