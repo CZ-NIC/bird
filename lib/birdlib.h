@@ -19,11 +19,32 @@
 #include <stdarg.h>
 #include <stdalign.h>
 
-/* Ugly structure offset handling macros */
 
-extern char invalid_nonzero_pointer[0];
-#define SAME_TYPE(a, b)	({ int _ = ((a) != (b)); !_; })
-#define TYPE_CAST(from, to, what) ( SAME_TYPE(((from) invalid_nonzero_pointer), (what)), ((to) (what)))
+/* Type checking and casting macros */
+
+#define TYPE_EQUAL(type1, type2) \
+  __builtin_types_compatible_p(type1, type2)
+
+#define TYPE_CHECK(type, val) \
+  STATIC_ASSERT(TYPE_EQUAL(type, typeof(val)))
+
+#define TYPE_CAST(from, to, val) \
+  ({ TYPE_CHECK(from, val); (to) (val); })
+
+#define LOOSE_CAST(from, to, val) \
+  ({ typeof(from) _val = val; (to) (_val); })
+
+#define CHECKED_CAST(from, to, cond, val) \
+  ({ TYPE_CHECK(from, val); ASSERT(cond); (to) (val); })
+
+#define MEMBER_TYPE(type, member) \
+  typeof(((type *)0)->member)
+
+#define MEMBER_PTR_TYPE(type, member) \
+  typeof(&((type *)0)->member)
+
+
+/* Ugly structure offset handling macros */
 
 #ifdef offsetof
 #define OFFSETOF offsetof
@@ -34,7 +55,6 @@ extern char invalid_nonzero_pointer[0];
 #define SKIP_BACK(s, i, p) ({ \
     typeof(p) _orig = p; \
     s *_ptr = ((s *)((char *)_orig - OFFSETOF(s, i))); \
-    SAME_TYPE(&_ptr->i, _orig); \
     _ptr; })
 #define SKIP_BACK_DECLARE(s, n, i, p) s *n = SKIP_BACK(s, i, p)
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
@@ -57,6 +77,7 @@ extern char invalid_nonzero_pointer[0];
 #else
 #error "Strange CPU pointer alignment: " CPU_POINTER_ALIGNMENT
 #endif
+
 
 /* Utility macros */
 
@@ -81,6 +102,9 @@ extern char invalid_nonzero_pointer[0];
 #define BYTES(n) ((((uint) (n)) + 7) / 8)
 #define CALL(fn, args...) ({ if (fn) fn(args); })
 #define ADVANCE(w, r, l) ({ r -= (l); w += (l); })
+
+#define WITH(type, var, expr) \
+  for (typeof(type) var = (expr), *_dummy, **_once = &_dummy; _once; _once = NULL)
 
 static inline int uint_cmp(uint i1, uint i2)
 { return (int)(i1 > i2) - (int)(i1 < i2); }
