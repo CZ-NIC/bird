@@ -563,7 +563,7 @@ static inline void ea_set_dest(struct ea_list **to, uint flags, uint dest)
 #define NEXTHOP_ONE(_nhad)	(NEXTHOP_NEXT(&(_nhad)->nh) == NEXTHOP_END(_nhad))
 
 #define NEXTHOP_WALK(_iter, _nhad) for ( \
-    struct nexthop *_iter = &(_nhad)->nh; \
+    typeof((_nhad)->nh) *_iter = &(_nhad)->nh;	  \
     (void *) _iter < (void *) NEXTHOP_END(_nhad); \
     _iter = NEXTHOP_NEXT(_iter))
 
@@ -576,17 +576,17 @@ int nexthop_is_sorted(struct nexthop_adata *x);
 
 #define NEXTHOP_IS_REACHABLE(nhad)	((nhad)->ad.length > NEXTHOP_DEST_SIZE)
 
-static inline struct nexthop_adata *
+static inline const struct nexthop_adata *
 rte_get_nexthops(const rte *r)
 {
   eattr *nhea = ea_find(r->attrs, &ea_gen_nexthop);
-  return nhea ? SKIP_BACK(struct nexthop_adata, ad, nhea->u.ptr) : NULL;
+  return nhea ? SKIP_BACK(const struct nexthop_adata, ad, nhea->u.ptr) : NULL;
 }
 
 /* Route has regular, reachable nexthop (i.e. not RTD_UNREACHABLE and like) */
 static inline int rte_is_reachable(const rte *r)
 {
-  struct nexthop_adata *nhad = rte_get_nexthops(r);
+  const struct nexthop_adata *nhad = rte_get_nexthops(r);
   return nhad && NEXTHOP_IS_REACHABLE(nhad);
 }
 

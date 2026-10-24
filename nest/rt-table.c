@@ -453,7 +453,7 @@ struct rt_roa_aggregated_adata {
 static void
 ea_roa_aggregate_format(const eattr *a, byte *buf, uint size)
 {
-  SKIP_BACK_DECLARE(struct rt_roa_aggregated_adata, rad, ad, a->u.ptr);
+  SKIP_BACK_DECLARE(const struct rt_roa_aggregated_adata, rad, ad, a->u.ptr);
   uint cnt = ROA_AGGR_COUNT(rad);
   for (uint upos = 0; upos < cnt; upos++)
   {
@@ -545,7 +545,7 @@ rt_aggregate_roa(void *_rag)
     if (prev.attrs)
     {
       eattr *ea = ea_find(prev.attrs, &ea_roa_aggregated);
-      rad = SKIP_BACK(struct rt_roa_aggregated_adata, ad, ea->u.ptr);
+      rad = SKIP_BACK(const struct rt_roa_aggregated_adata, ad, ea->u.ptr);
       count = ROA_AGGR_COUNT(rad);
     }
 
@@ -730,7 +730,7 @@ net_roa_check(rtable *tp, const net_addr *n, u32 asn)
   TRIE_WALK_TO_ROOT_IP##ipv(trie, &(nu->ip##ipv), var) {			\
     rte r = rt_net_best_reading(tr, (net_addr *) &var);				\
     if (!r.attrs) continue;							\
-    SKIP_BACK_DECLARE(struct rt_roa_aggregated_adata, rad,			\
+    SKIP_BACK_DECLARE(const struct rt_roa_aggregated_adata, rad,		\
 	ad, ea_get_adata(r.attrs, &ea_roa_aggregated));				\
     uint count = ROA_AGGR_COUNT(rad);						\
     for (uint p = 0; p < count; p++)						\
@@ -4337,7 +4337,7 @@ rt_postconfig(struct config *c)
  */
 
 void
-ea_set_hostentry(ea_list **to, rtable *dep, rtable *src, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum])
+ea_set_hostentry(ea_list **to, rtable *dep, rtable *src, ip_addr gw, ip_addr ll, u32 lnum, const u32 labels[lnum])
 {
   struct {
     struct hostentry_adata head;

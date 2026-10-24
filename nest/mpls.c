@@ -1253,8 +1253,8 @@ mpls_announce_fec(struct mpls_fec_map *m, struct mpls_fec *fec, ea_list *src)
   const struct eattr *heea = ea_find_by_class(src, &ea_gen_hostentry);
   if (heea) {
     /* The same hostentry, but different dependent table */
-    SKIP_BACK_DECLARE(struct hostentry_adata, head, ad, heea->u.ad);
-    struct hostentry *he = head->he;
+    SKIP_BACK_DECLARE(const struct hostentry_adata, head, ad, heea->u.ad);
+    const struct hostentry *he = head->he;
     ea_set_hostentry(&e.attrs, m->channel->table, he->owner, he->addr, he->link,
 	HOSTENTRY_LABEL_COUNT(head), head->labels);
   }
