@@ -2278,9 +2278,9 @@ nl_send_fdb(const net_addr *n0, const rte *e, int op, int tunnel)
   if (n->vid)
     nl_add_attr_u16(&r->h, rsize, NDA_VLAN, n->vid);
 
-  struct nexthop_adata *nhad = rte_get_nexthops(e);
+  const struct nexthop_adata *nhad = rte_get_nexthops(e);
   ASSERT_DIE(NEXTHOP_ONE(nhad));
-  struct nexthop *nh = &nhad->nh;
+  const struct nexthop *nh = &nhad->nh;
   r->n.ndm_ifindex = nh->iface->index;
 
   if (tunnel)

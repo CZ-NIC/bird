@@ -1201,7 +1201,7 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, ea_list **to, u32 lnum, u32 lab
   {
     /* Update nexthop labels */
     eattr *e = ea_find(*to, &ea_gen_nexthop);
-    SKIP_BACK_DECLARE(struct nexthop_adata, nhad, ad, e->u.ptr);
+    SKIP_BACK_DECLARE(const struct nexthop_adata, nhad, ad, e->u.ptr);
 
     struct nexthop_adata_mpls nam;
     memset(&nam, 0, sizeof nam);
