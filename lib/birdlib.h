@@ -46,12 +46,7 @@
 
 /* Ugly structure offset handling macros */
 
-#ifdef offsetof
-#define OFFSETOF offsetof
-#else
-#define OFFSETOF(s, i) ((size_t) &((s *)0)->i)
-#endif
-
+#define OFFSETOF(s, i) offsetof(s, i)
 #define SKIP_BACK(s, i, p) ({ \
     typeof(p) _orig = p; \
     s *_ptr = ((s *)((char *)_orig - OFFSETOF(s, i))); \
@@ -136,9 +131,6 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define BIT32_ALL_HELPER(x)	(1 << (x)) |
 #define BIT32_ALL(...)		(MACRO_FOREACH(BIT32_ALL_HELPER, __VA_ARGS__) 0)
 
-#ifndef NULL
-#define NULL ((void *) 0)
-#endif
 
 /* Macros for gcc attributes */
 
