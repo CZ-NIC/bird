@@ -215,7 +215,7 @@ static void bmp_proto_state_changed(void *_p);
 
 static void
 bmp_send_peer_up_notif_msg(struct bmp_proto *p, ea_list *bgp,
-    const adata *tx_data, const adata *rx_data, struct bgp_conn_sk_ad *sk);
+    const adata *tx_data, const adata *rx_data, const struct bgp_conn_sk_ad *sk);
 
 // Stores TX data
 struct bmp_tx_buffer {
@@ -759,7 +759,7 @@ bmp_remove_peer(struct bmp_proto *p, struct bmp_peer *bp)
 static struct bmp_peer *
 bmp_peer_up_(struct bmp_proto *p, struct bmp_peer_info *bpi, ea_list **cached_channels,
 	     const adata *tx_open_msg, const adata *rx_open_msg,
-	     struct bgp_conn_sk_ad *sk)
+	     const struct bgp_conn_sk_ad *sk)
 {
   if (!p->started)
     return NULL;
@@ -793,7 +793,7 @@ bmp_peer_up_inout(struct bmp_proto *p, struct bmp_peer_info *bpi, ea_list **cach
 
     const adata *loc_open = ea_get_adata(bpi->proto_state, &ea_bgp_in_conn_local_open_msg);
     const adata *rem_open = ea_get_adata(bpi->proto_state, &ea_bgp_in_conn_remote_open_msg);
-    SKIP_BACK_DECLARE(struct bgp_conn_sk_ad, sk, ad, ea_get_adata(bpi->proto_state, &ea_bgp_in_conn_sk));
+    SKIP_BACK_DECLARE(const struct bgp_conn_sk_ad, sk, ad, ea_get_adata(bpi->proto_state, &ea_bgp_in_conn_sk));
 
     ASSERT_DIE(loc_open && rem_open);
     return bmp_peer_up_(p, bpi, cached_channels, loc_open, rem_open, sk);
@@ -803,7 +803,7 @@ bmp_peer_up_inout(struct bmp_proto *p, struct bmp_peer_info *bpi, ea_list **cach
   {
     const adata *loc_open = ea_get_adata(bpi->proto_state, &ea_bgp_out_conn_local_open_msg);
     const adata *rem_open = ea_get_adata(bpi->proto_state, &ea_bgp_out_conn_remote_open_msg);
-    SKIP_BACK_DECLARE(struct bgp_conn_sk_ad, sk, ad, ea_get_adata(bpi->proto_state, &ea_bgp_out_conn_sk));
+    SKIP_BACK_DECLARE(const struct bgp_conn_sk_ad, sk, ad, ea_get_adata(bpi->proto_state, &ea_bgp_out_conn_sk));
 
     ASSERT_DIE(loc_open && rem_open);
     return bmp_peer_up_(p, bpi, cached_channels, loc_open, rem_open, sk);
@@ -827,7 +827,7 @@ bmp_is_peer_global_instance(ea_list *bgp)
 
 static void
 bmp_send_peer_up_notif_msg(struct bmp_proto *p, ea_list *bgp,
-    const adata *tx_data, const adata *rx_data, struct bgp_conn_sk_ad *sk)
+    const adata *tx_data, const adata *rx_data, const struct bgp_conn_sk_ad *sk)
 {
   ASSERT(p->started);
 
@@ -947,7 +947,7 @@ bmp_send_peer_down_notif_msg(struct bmp_proto *p, ea_list *bgp,
 }
 
 static void
-bmp_peer_down_(struct bmp_proto *p, struct bmp_peer_info *bpi, struct bgp_session_close_ad *bscad)
+bmp_peer_down_(struct bmp_proto *p, struct bmp_peer_info *bpi, const struct bgp_session_close_ad *bscad)
 {
   if (!p->started)
     return;
@@ -1424,7 +1424,7 @@ bmp_process_proto_state_change(struct bmp_proto *p, struct lfjour_item *last_up)
   /* This was not a peer-up notification. It may be peer down tho. */
   const adata *bscad = ea_get_adata(ppu->new, &ea_bgp_close_bmp);
   if (bscad)
-    bmp_peer_down_(p, &bpi, SKIP_BACK(struct bgp_session_close_ad, ad, bscad));
+    bmp_peer_down_(p, &bpi, SKIP_BACK(const struct bgp_session_close_ad, ad, bscad));
 }
 
 static void
