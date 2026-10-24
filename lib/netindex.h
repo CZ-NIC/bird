@@ -45,6 +45,8 @@ void net_unlock_index(netindex_hash *h, struct netindex *i);
 
 /* Retrieve the index from its addr pointer */
 #define NET_TO_INDEX(a) \
-  SKIP_BACK(struct netindex, addr[0], a)
+  ((struct netindex *) SKIP_BACK(const struct netindex, addr[0], a))
+
+/* FIXME: The outer cast is temporary workaround, should be removed */
 
 #endif //_BIRD_LIB_NETINDEX_H_
