@@ -351,7 +351,7 @@ static net *
 net_route(struct rtable_reading *tr, const net_addr *n)
 {
   ASSERT(tr->t->addr_type == n->type);
-  SKIP_BACK_DECLARE(net_addr_union, nu, n, n);
+  SKIP_BACK_DECLARE(const net_addr_union, nu, n, n);
 
   const struct f_trie *trie = atomic_load_explicit(&tr->t->trie, memory_order_acquire);
 
@@ -721,7 +721,7 @@ rt_stop_roa_aggregator(rtable *t)
 int
 net_roa_check(rtable *tp, const net_addr *n, u32 asn)
 {
-  SKIP_BACK_DECLARE(net_addr_union, nu, n, n);
+  SKIP_BACK_DECLARE(const net_addr_union, nu, n, n);
   int anything = 0;
 
   rtable *aux = tp->roa_aux_table;
