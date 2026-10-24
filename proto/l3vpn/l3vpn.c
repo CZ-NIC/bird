@@ -66,7 +66,7 @@ static struct ea_class *ea_bgp_next_hop,
 		       *ea_bgp_mpls_label_stack;
 
 static inline int
-mpls_valid_nexthop(struct nexthop_adata *nhad)
+mpls_valid_nexthop(const struct nexthop_adata *nhad)
 {
   /* MPLS does not support special blackhole targets */
   if (!NEXTHOP_IS_REACHABLE(nhad))
@@ -197,7 +197,7 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, const net_addr *n0, rte *ne
   if (new)
   {
     const struct adata *ecad = ea_get_adata(new->attrs, ea_bgp_ext_community);
-    struct nexthop_adata *nhad_orig = rte_get_nexthops(new);
+    const struct nexthop_adata *nhad_orig = rte_get_nexthops(new);
 
     new->src = src;
 
