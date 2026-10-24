@@ -1868,7 +1868,7 @@ channel_notify_accepted(void *_channel)
 
       case RT_EXPORT_UPDATE:
 	{
-	  struct rt_export_feed *f = rt_net_feed(c->table, u->update->new ? u->update->new->net : u->update->old->net, SKIP_BACK(struct rt_pending_export, it, u->update));
+	  struct rt_export_feed *f = rt_net_feed(c->table, u->update->new ? u->update->new->net : u->update->old->net, SKIP_BACK(const struct rt_pending_export, it, u->update));
 	  rt_notify_accepted(c, f);
 	  for (uint i=0; i<f->count_exports; i++)
 	    rt_export_processed(&c->out_req, f->exports[i]);
@@ -2009,7 +2009,7 @@ channel_notify_merged(void *_channel)
 
       case RT_EXPORT_UPDATE:
 	{
-	  struct rt_export_feed *f = rt_net_feed(c->table, u->update->new ? u->update->new->net : u->update->old->net, SKIP_BACK(struct rt_pending_export, it, u->update));
+	  struct rt_export_feed *f = rt_net_feed(c->table, u->update->new ? u->update->new->net : u->update->old->net, SKIP_BACK(const struct rt_pending_export, it, u->update));
 	  rt_notify_merged(c, f);
 	  for (uint i=0; i<f->count_exports; i++)
 	    rt_export_processed(&c->out_req, f->exports[i]);
@@ -3519,7 +3519,7 @@ rt_flowspec_export(void *_link)
 	  const rte *old = RTE_VALID_OR_NULL(u->update->old);
 	  const rte *new = u->update->new;
 	  for (
-	      SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it, u->update);
+	      SKIP_BACK_DECLARE(const struct rt_pending_export, rpe, it, u->update);
 	      rpe = atomic_load_explicit(&rpe->next, memory_order_acquire) ;)
 	  {
 	    ASSERT_DIE(new == rpe->it.old);
@@ -5480,7 +5480,7 @@ hc_notify_export(void *_hc)
 	  const rte *old = RTE_VALID_OR_NULL(u->update->old);
 	  const rte *new = u->update->new;
 	  for (
-	      SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it, u->update);
+	      SKIP_BACK_DECLARE(const struct rt_pending_export, rpe, it, u->update);
 	      rpe = atomic_load_explicit(&rpe->next, memory_order_acquire) ;)
 	  {
 	    ASSERT_DIE(new == rpe->it.old);
