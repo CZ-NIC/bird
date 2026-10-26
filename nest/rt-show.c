@@ -196,7 +196,7 @@ rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *
       if (!~label)
         net_format(feed->ni->addr, ia, ia_len);
       else
-        bsnprintf(ia, sizeof(ia), "%N mpls %d", feed->ni->addr, label);
+        bsnprintf(ia, ia_len, "%N mpls %d", feed->ni->addr, label);
     }
     else
       ia[0] = 0;
