@@ -92,7 +92,7 @@ struct rip_proto
   struct proto p;
   struct fib rtable;			/* Internal routing table */
   list iface_list;			/* List of interfaces (struct rip_iface) */
-  slab *rte_slab;			/* Slab for internal routes (struct rip_rte) */
+  SLAB(struct rip_rte) rte_slab;	/* Slab for internal routes */
   timer *timer;				/* Main protocol timer */
 
   u8 rip2;				/* RIPv2 (IPv4) or RIPng (IPv6) */

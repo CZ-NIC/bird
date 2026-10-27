@@ -97,7 +97,7 @@ static void rip_trigger_update(struct rip_proto *p);
 static struct rip_rte *
 rip_add_rte(struct rip_proto *p, struct rip_rte **rp, struct rip_rte *src)
 {
-  struct rip_rte *rt = sl_alloc(p->rte_slab);
+  struct rip_rte *rt = SL_ALLOC(p->rte_slab);
 
   memcpy(rt, src, sizeof(struct rip_rte));
   rt->next = *rp;
@@ -116,7 +116,7 @@ rip_remove_rte(struct rip_proto *p UNUSED, struct rip_rte **rp)
   rip_unlock_neighbor(rt->from);
 
   *rp = rt->next;
-  sl_free(rt);
+  SL_FREE(p->rte_slab, rt);
 }
 
 static inline int rip_same_rte(struct rip_rte *a, struct rip_rte *b)
@@ -1153,7 +1153,7 @@ rip_start(struct proto *P)
   init_list(&p->iface_list);
   fib_init(&p->rtable, P->pool, cf->rip2 ? NET_IP4 : NET_IP6,
 	   sizeof(struct rip_entry), OFFSETOF(struct rip_entry, n), 0, NULL);
-  p->rte_slab = sl_new(P->pool, sizeof(struct rip_rte));
+  SLAB_INIT(p->rte_slab, P->pool);
   p->timer = tm_new_init(P->pool, rip_timer, p, 0, 0);
 
   p->rip2 = cf->rip2;
