@@ -118,23 +118,21 @@ static void
 add_area_nets(struct ospf_area *oa, struct ospf_area_config *ac)
 {
   struct ospf_proto *p = oa->po;
-  struct area_net_config *anc;
-  struct area_net *an;
 
   fib_init(&oa->net_fib,  p->p.pool, ospf_get_af(p),
 	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL);
   fib_init(&oa->enet_fib, p->p.pool, ospf_get_af(p),
 	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL);
 
-  WALK_LIST(anc, ac->net_list)
+  LIST_WALK(ac->net_list, anc)
   {
-    an = fib_get(&oa->net_fib, &anc->prefix);
+    struct area_net *an = fib_get(&oa->net_fib, &anc->prefix);
     an->hidden = anc->hidden;
   }
 
-  WALK_LIST(anc, ac->enet_list)
+  LIST_WALK(ac->enet_list, anc)
   {
-    an = fib_get(&oa->enet_fib, &anc->prefix);
+    struct area_net *an = fib_get(&oa->enet_fib, &anc->prefix);
     an->hidden = anc->hidden;
     an->tag = anc->tag;
   }
@@ -158,7 +156,7 @@ ospf_area_add(struct ospf_proto *p, struct ospf_area_config *ac)
   OSPF_TRACE(D_EVENTS, "Adding area %R", ac->areaid);
 
   oa = mb_allocz(p->p.pool, sizeof(struct ospf_area));
-  add_tail(&p->area_list, NODE oa);
+  LIST_ADD_TAIL(p->area_list, oa);
   p->areano++;
 
   oa->ac = ac;
@@ -203,27 +201,27 @@ ospf_area_remove(struct ospf_area *oa)
     rfree(oa->translator_timer);
 
   p->areano--;
-  rem_node(NODE oa);
+  LIST_REMOVE(p->area_list, oa);
   mb_free(oa);
 }
 
 struct ospf_area *
 ospf_find_area(struct ospf_proto *p, u32 aid)
 {
-  struct ospf_area *oa;
-  WALK_LIST(oa, p->area_list)
-    if (((struct ospf_area *) oa)->areaid == aid)
+  LIST_WALK(p->area_list, oa)
+    if (oa->areaid == aid)
       return oa;
+
   return NULL;
 }
 
 static struct ospf_iface *
 ospf_find_vlink(struct ospf_proto *p, u32 voa, u32 vid)
 {
-  struct ospf_iface *ifa;
-  WALK_LIST(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
     if ((ifa->type == OSPF_IT_VLINK) && (ifa->voa->areaid == voa) && (ifa->vid == vid))
       return ifa;
+
   return NULL;
 }
 
@@ -278,7 +276,6 @@ ospf_start(struct proto *P)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_config *c = (struct ospf_config *) (P->cf);
-  struct ospf_area_config *ac;
 
   p->router_id = proto_get_router_id(P->cf);
   p->ospf2 = c->ospf2;
@@ -300,8 +297,8 @@ ospf_start(struct proto *P)
   p->lsab_used = 0;
   p->lsab = mb_alloc(P->pool, p->lsab_size);
   p->nhpool = lp_new(P->pool);
-  init_list(&(p->iface_list));
-  init_list(&(p->area_list));
+  LIST_INIT(p->iface_list, n);
+  LIST_INIT(p->area_list, n);
   fib_init(&p->rtf, P->pool, ospf_get_af(p), sizeof(ort), OFFSETOF(ort, fn), 0, NULL);
   if (ospf_is_v3(p))
     idm_init(&p->idm, P->pool, 16);
@@ -318,15 +315,14 @@ ospf_start(struct proto *P)
   if (p->p.gr_recovery && (p->gr_mode == OSPF_GR_ABLE))
     ospf_start_gr_recovery(p);
 
-  WALK_LIST(ac, c->area_list)
+  LIST_WALK(c->area_list, ac)
     ospf_area_add(p, ac);
 
   if (c->abr)
     ospf_open_vlink_sk(p);
 
   /* Add all virtual links */
-  struct ospf_iface_patt *ic;
-  WALK_LIST(ic, c->vlink_list)
+  LIST_WALK(c->vlink_list, ic)
     ospf_iface_new_vlink(p, ic);
 
   return PS_UP;
@@ -336,18 +332,16 @@ static void
 ospf_dump(struct proto *P, struct dump_request *dreq)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
-  struct ospf_iface *ifa;
-  struct ospf_neighbor *n;
 
   RDUMP("Area number: %d\n", p->areano);
 
-  WALK_LIST(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
   {
     RDUMP("Interface: %s\n", ifa->ifname);
     RDUMP("state: %u\n", ifa->state);
     RDUMP("DR:  %R\n", ifa->drid);
     RDUMP("BDR: %R\n", ifa->bdrid);
-    WALK_LIST(n, ifa->neigh_list)
+    LIST_WALK(ifa->neigh_list, n)
     {
       RDUMP("  neighbor %R in state %u\n", n->rid, n->state);
     }
@@ -510,20 +504,19 @@ static int
 ospf_shutdown(struct proto *P)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
-  struct ospf_iface *ifa;
 
   OSPF_TRACE(D_EVENTS, "Shutdown requested");
 
   if ((P->down_code == PDC_CMD_GR_DOWN) && (p->gr_mode == OSPF_GR_ABLE))
   {
     /* Originate Grace LSAs */
-    WALK_LIST(ifa, p->iface_list)
+    LIST_WALK(p->iface_list, ifa)
       ospf_originate_gr_lsa(p, ifa);
   }
   else
   {
     /* Send to all my neighbors 1WAY */
-    WALK_LIST(ifa, p->iface_list)
+    LIST_WALK(p->iface_list, ifa)
       ospf_iface_shutdown(ifa);
   }
 
@@ -549,13 +542,12 @@ ospf_get_status(struct proto *P, byte * buf)
     buf[0] = 0;
   else
   {
-    struct ospf_iface *ifa;
-    struct ospf_neighbor *n;
     int adj = 0;
 
-    WALK_LIST(ifa, p->iface_list)
-      WALK_LIST(n, ifa->neigh_list) if (n->state == NEIGHBOR_FULL)
-      adj = 1;
+    LIST_WALK(p->iface_list, ifa)
+      LIST_WALK(ifa->neigh_list, n)
+        if (n->state == NEIGHBOR_FULL)
+	  adj = 1;
 
     if (adj == 0)
       strcpy(buf, "Alone");
@@ -629,7 +621,6 @@ ospf_area_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
 {
   struct ospf_proto *p = oa->po;
   struct ospf_area_config *oac = oa->ac;
-  struct ospf_iface *ifa, *ifx;
 
   oa->ac = nac;
   oa->options = nac->type | ospf_opts(p);
@@ -639,7 +630,7 @@ ospf_area_reconfigure(struct ospf_area *oa, struct ospf_area_config *nac)
     log(L_INFO "%s: Restarting area %R", p->p.name, oa->areaid);
 
     /* Remove area interfaces, will be re-added later */
-    WALK_LIST_DELSAFE(ifa, ifx, p->iface_list)
+    LIST_WALK_DELSAFE(p->iface_list, ifa)
       if (ifa->oa == oa)
       {
 	ospf_iface_shutdown(ifa);
@@ -677,10 +668,6 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_config *old = (struct ospf_config *) (P->cf);
   struct ospf_config *new = (struct ospf_config *) CF;
-  struct ospf_area_config *oac, *nac;
-  struct ospf_area *oa, *oax;
-  struct ospf_iface *ifa, *ifx;
-  struct ospf_iface_patt *ip;
 
   if (proto_get_router_id(CF) != p->router_id)
     return 0;
@@ -699,8 +686,9 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
 
   if (p->areano == 1)
   {
-    oac = HEAD(old->area_list);
-    nac = HEAD(new->area_list);
+    struct ospf_area_config *oac, *nac;
+    oac = LIST_FIRST(old->area_list);
+    nac = LIST_FIRST(new->area_list);
 
     if (oac->type != nac->type)
       return 0;
@@ -726,16 +714,16 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   tm_start(p->disp_timer, 10 MS);
 
   /* Mark all areas and ifaces */
-  WALK_LIST(oa, p->area_list)
+  LIST_WALK(p->area_list, oa)
     oa->marked = 1;
 
-  WALK_LIST(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
     ifa->marked = 1;
 
   /* Add and update areas */
-  WALK_LIST(nac, new->area_list)
+  LIST_WALK(new->area_list, nac)
   {
-    oa = ospf_find_area(p, nac->areaid);
+    struct ospf_area *oa = ospf_find_area(p, nac->areaid);
     if (oa)
       ospf_area_reconfigure(oa, nac);
     else
@@ -746,9 +734,9 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   ospf_reconfigure_ifaces(p);
 
   /* Add and update vlinks */
-  WALK_LIST(ip, new->vlink_list)
+  LIST_WALK(new->vlink_list, ip)
   {
-    ifa = ospf_find_vlink(p, ip->voa, ip->vid);
+    struct ospf_iface *ifa = ospf_find_vlink(p, ip->voa, ip->vid);
     if (ifa)
       ospf_iface_reconfigure(ifa, ip);
     else
@@ -756,14 +744,14 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   }
 
   /* Delete remaining ifaces and areas */
-  WALK_LIST_DELSAFE(ifa, ifx, p->iface_list)
+  LIST_WALK_DELSAFE(p->iface_list, ifa)
     if (ifa->marked)
     {
       ospf_iface_shutdown(ifa);
       ospf_iface_remove(ifa);
     }
 
-  WALK_LIST_DELSAFE(oa, oax, p->area_list)
+  LIST_WALK_DELSAFE(p->area_list, oa)
     if (oa->marked)
       ospf_area_remove(oa);
 
@@ -777,8 +765,6 @@ void
 ospf_sh_neigh(struct proto *P, const char *iff)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
-  struct ospf_iface *ifa = NULL;
-  struct ospf_neighbor *n;
 
   if (p->p.proto_state != PS_UP)
   {
@@ -789,9 +775,10 @@ ospf_sh_neigh(struct proto *P, const char *iff)
   cli_msg(-1013, "%s:", p->p.name);
   cli_msg(-1013, "%-12s\t%3s\t%-15s\t%-5s\t%-10s %s", "Router ID", "Pri",
 	  "     State", "DTime", "Interface", "Router IP");
-  WALK_LIST(ifa, p->iface_list)
+
+  LIST_WALK(p->iface_list, ifa)
     if ((iff == NULL) || patmatch(iff, ifa->ifname))
-      WALK_LIST(n, ifa->neigh_list)
+      LIST_WALK(ifa->neigh_list, n)
 	ospf_sh_neigh_info(n);
 }
 
@@ -799,9 +786,6 @@ void
 ospf_sh(struct proto *P)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
-  struct ospf_area *oa;
-  struct ospf_iface *ifa;
-  struct ospf_neighbor *n;
   int ifano, nno, adjno, firstfib;
 
   if (p->p.proto_state != PS_UP)
@@ -817,19 +801,19 @@ ospf_sh(struct proto *P)
   cli_msg(-1014, "Number of areas: %u", p->areano);
   cli_msg(-1014, "Number of LSAs in DB:\t%u", p->gr->hash_entries);
 
-  WALK_LIST(oa, p->area_list)
+  LIST_WALK(p->area_list, oa)
   {
     cli_msg(-1014, "\tArea: %R (%u) %s", oa->areaid, oa->areaid,
 	    oa->areaid == 0 ? "[BACKBONE]" : "");
     ifano = 0;
     nno = 0;
     adjno = 0;
-    WALK_LIST(ifa, p->iface_list)
+    LIST_WALK(p->iface_list, ifa)
     {
       if (oa == ifa->oa)
       {
 	ifano++;
-	WALK_LIST(n, ifa->neigh_list)
+	LIST_WALK(ifa->neigh_list, n)
 	{
 	  nno++;
 	  if (n->state == NEIGHBOR_FULL)
@@ -852,7 +836,7 @@ ospf_sh(struct proto *P)
     firstfib = 1;
     FIB_WALK(&oa->net_fib, struct area_net, anet)
     {
-      if(firstfib)
+      if (firstfib)
       {
 	cli_msg(-1014, "\t\tArea networks:");
 	firstfib = 0;
@@ -865,7 +849,7 @@ ospf_sh(struct proto *P)
     firstfib = 1;
     FIB_WALK(&oa->enet_fib, struct area_net, anet)
     {
-      if(firstfib)
+      if (firstfib)
       {
 	cli_msg(-1014, "\t\tArea external networks:");
 	firstfib = 0;
@@ -874,7 +858,6 @@ ospf_sh(struct proto *P)
 		anet->hidden ? "Hidden" : "Advertise", anet->active ? "Active" : "");
     }
     FIB_WALK_END;
-
   }
 }
 
@@ -882,7 +865,6 @@ void
 ospf_sh_iface(struct proto *P, const char *iff)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
-  struct ospf_iface *ifa = NULL;
 
   if (p->p.proto_state != PS_UP)
   {
@@ -891,7 +873,7 @@ ospf_sh_iface(struct proto *P, const char *iff)
   }
 
   cli_msg(-1015, "%s:", p->p.name);
-  WALK_LIST(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
     if ((iff == NULL) || patmatch(iff, ifa->ifname))
       ospf_iface_info(ifa);
 }

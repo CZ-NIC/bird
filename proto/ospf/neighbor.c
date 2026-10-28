@@ -85,14 +85,14 @@ ospf_neighbor_new(struct ospf_iface *ifa)
 
   n->pool = pool;
   n->ifa = ifa;
-  add_tail(&ifa->neigh_list, NODE n);
+  LIST_ADD_TAIL(ifa->neigh_list, n);
   n->state = NEIGHBOR_DOWN;
 
   init_lists(p, n);
   s_init(&(n->dbsi), &(p->lsal));
 
-  init_list(&n->ackl[ACKL_DIRECT]);
-  init_list(&n->ackl[ACKL_DELAY]);
+  LIST_INIT(n->ackl[ACKL_DIRECT], n);
+  LIST_INIT(n->ackl[ACKL_DELAY], n);
 
   n->inactim = tm_new_init(pool, inactivity_timer_hook, n, 0, 0);
   n->dbdes_timer = tm_new_init(pool, dbdes_timer_hook, n, ifa->rxmtint S, 0);
@@ -112,14 +112,14 @@ ospf_neigh_down(struct ospf_neighbor *n)
 
   if ((ifa->type == OSPF_IT_NBMA) || (ifa->type == OSPF_IT_PTMP))
   {
-    struct nbma_node *nn = find_nbma_node(ifa, n->ip);
+    struct nbma_node *nn = ospf_iface_find_nbma_node(ifa, n->ip);
     if (nn)
       nn->found = 0;
   }
 
   s_get(&(n->dbsi));
   release_lsrtl(p, n);
-  rem_node(NODE n);
+  LIST_REMOVE(ifa->neigh_list, n);
   rfree(n->pool);
 
   OSPF_TRACE(D_EVENTS, "Neighbor %R on %s removed", rid, ifa->ifname);
@@ -529,16 +529,13 @@ ospf_neigh_notify_grace_lsa(struct ospf_neighbor *n, struct top_hash_entry *en)
 void
 ospf_neigh_lsadb_changed_(struct ospf_proto *p, struct top_hash_entry *en)
 {
-  struct ospf_iface *ifa;
-  struct ospf_neighbor *n, *nx;
-
   if (LSA_FUNCTION(en->lsa_type) > LSA_FUNCTION(LSA_T_NSSA))
     return;
 
   /* RFC 3623 3.2 (3) - cancel graceful restart when LSdb changed */
-  WALK_LIST(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
     if (lsa_flooding_allowed(en->lsa_type, en->domain, ifa))
-      WALK_LIST_DELSAFE(n, nx, ifa->neigh_list)
+      LIST_WALK_DELSAFE(ifa->neigh_list, n)
 	if (n->gr_active)
 	  ospf_neigh_cancel_graceful_restart(n);
 }
@@ -549,16 +546,13 @@ static inline u32 neigh_get_id(struct ospf_proto *p, struct ospf_neighbor *n)
 { return ospf_is_v2(p) ? ipa_to_u32(n->ip) : n->rid; }
 
 static struct ospf_neighbor *
-elect_bdr(struct ospf_proto *p, list nl)
+elect_bdr(struct ospf_proto *p, struct ospf_iface *ifa)
 {
-  struct ospf_neighbor *neigh, *n1, *n2;
-  u32 nid;
+  struct ospf_neighbor *n1 = NULL, *n2 = NULL;
 
-  n1 = NULL;
-  n2 = NULL;
-  WALK_LIST(neigh, nl)			/* First try those decl. themselves */
+  LIST_WALK(ifa->neigh_list, neigh)	/* First try those decl. themselves */
   {
-    nid = neigh_get_id(p, neigh);
+    u32 nid = neigh_get_id(p, neigh);
 
     if (neigh->state >= NEIGHBOR_2WAY)	/* Higher than 2WAY */
       if (neigh->priority > 0)		/* Eligible */
@@ -603,15 +597,13 @@ elect_bdr(struct ospf_proto *p, list nl)
 }
 
 static struct ospf_neighbor *
-elect_dr(struct ospf_proto *p, list nl)
+elect_dr(struct ospf_proto *p, struct ospf_iface *ifa)
 {
-  struct ospf_neighbor *neigh, *n;
-  u32 nid;
+  struct ospf_neighbor *n = NULL;
 
-  n = NULL;
-  WALK_LIST(neigh, nl)			/* And now DR */
+  LIST_WALK(ifa->neigh_list, neigh)	/* And now DR */
   {
-    nid = neigh_get_id(p, neigh);
+    u32 nid = neigh_get_id(p, neigh);
 
     if (neigh->state >= NEIGHBOR_2WAY)	/* Higher than 2WAY */
       if (neigh->priority > 0)		/* Eligible */
@@ -650,7 +642,7 @@ void
 ospf_dr_election(struct ospf_iface *ifa)
 {
   struct ospf_proto *p = ifa->oa->po;
-  struct ospf_neighbor *neigh, *ndr, *nbdr;
+  struct ospf_neighbor *ndr, *nbdr;
   u32 myid = p->router_id;
 
   DBG("(B)DR election.\n");
@@ -665,10 +657,10 @@ ospf_dr_election(struct ospf_iface *ifa)
     .iface_id = ifa->iface_id,
   };
 
-  add_tail(&ifa->neigh_list, NODE & me);
+  LIST_ADD_TAIL(ifa->neigh_list, &me);
 
-  nbdr = elect_bdr(p, ifa->neigh_list);
-  ndr = elect_dr(p, ifa->neigh_list);
+  nbdr = elect_bdr(p, ifa);
+  ndr = elect_dr(p, ifa);
 
   if (ndr == NULL)
     ndr = nbdr;
@@ -682,14 +674,14 @@ ospf_dr_election(struct ospf_iface *ifa)
     me.dr = ndr ? neigh_get_id(p, ndr) : 0;
     me.bdr = nbdr ? neigh_get_id(p, nbdr) : 0;
 
-    nbdr = elect_bdr(p, ifa->neigh_list);
-    ndr = elect_dr(p, ifa->neigh_list);
+    nbdr = elect_bdr(p, ifa);
+    ndr = elect_dr(p, ifa);
 
     if (ndr == NULL)
       ndr = nbdr;
   }
 
-  rem_node(NODE & me);
+  LIST_REMOVE(ifa->neigh_list, &me);
 
 
   u32 old_drid = ifa->drid;
@@ -715,7 +707,7 @@ ospf_dr_election(struct ospf_iface *ifa)
 
   /* Review neighbor adjacencies if DR or BDR changed */
   if ((ifa->drid != old_drid) || (ifa->bdrid != old_bdrid))
-    WALK_LIST(neigh, ifa->neigh_list)
+    LIST_WALK(ifa->neigh_list, neigh)
       if (neigh->state >= NEIGHBOR_2WAY)
 	ospf_neigh_sm(neigh, INM_ADJOK);
 
@@ -727,20 +719,20 @@ ospf_dr_election(struct ospf_iface *ifa)
 struct ospf_neighbor *
 find_neigh(struct ospf_iface *ifa, u32 rid)
 {
-  struct ospf_neighbor *n;
-  WALK_LIST(n, ifa->neigh_list)
+  LIST_WALK(ifa->neigh_list, n)
     if (n->rid == rid)
       return n;
+
   return NULL;
 }
 
 struct ospf_neighbor *
 find_neigh_by_ip(struct ospf_iface *ifa, ip_addr ip)
 {
-  struct ospf_neighbor *n;
-  WALK_LIST(n, ifa->neigh_list)
+  LIST_WALK(ifa->neigh_list, n)
     if (ipa_equal(n->ip, ip))
       return n;
+
   return NULL;
 }
 

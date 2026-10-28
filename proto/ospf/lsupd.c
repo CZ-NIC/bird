@@ -218,18 +218,16 @@ void
 ospf_flood_event(void *ptr)
 {
   struct ospf_proto *p = ptr;
-  struct ospf_iface *ifa;
-  int i, count;
 
-  WALK_LIST(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
   {
     if (ifa->flood_queue_used == 0)
       continue;
 
-    count = ifa->flood_queue_used;
+    int count = ifa->flood_queue_used;
     ospf_flood_lsupd(p, ifa->flood_queue, count, count, ifa);
 
-    for (i = 0; i < count; i++)
+    for (int i = 0; i < count; i++)
       ifa->flood_queue[i]->ret_count--;
 
     ifa->flood_queue_used = 0;
@@ -249,13 +247,10 @@ ospf_flood_event(void *ptr)
 int
 ospf_flood_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_neighbor *from)
 {
-  struct ospf_iface *ifa;
-  struct ospf_neighbor *n;
-
   /* RFC 2328 13.3 */
 
   int back = 0;
-  WALK_LIST(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
   {
     if (ifa->stub)
       continue;
@@ -267,7 +262,7 @@ ospf_flood_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_neig
 	hh->type, hh->id, hh->rt, hh->sn, hh->age);
 
     int used = 0;
-    WALK_LIST(n, ifa->neigh_list)
+    LIST_WALK(ifa->neigh_list, n)
     {
       /* 13.3 (1a) */
       if (n->state < NEIGHBOR_EXCHANGE)
@@ -465,8 +460,7 @@ ospf_rxmt_lsupd(struct ospf_proto *p, struct ospf_neighbor *n)
 static inline int
 ospf_addr_is_local(struct ospf_proto *p, struct ospf_area *oa, ip_addr ip)
 {
-  struct ospf_iface *ifa;
-  WALK_LIST(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
     if ((ifa->oa == oa) && ifa->addr && ipa_equal(ifa->addr->ip, ip))
       return 1;
 
@@ -613,11 +607,8 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
        * Old code for removing LSA from all retransmission lists. Must be done
        * before (5b), otherwise it also removes the new entries from (5b).
        */
-      struct ospf_iface *ifi;
-      struct ospf_neighbor *ni;
-
-      WALK_LIST(ifi, p->iface_list)
-	WALK_LIST(ni, ifi->neigh_list)
+      LIST_WALK(p->iface_list, ifi)
+	LIST_WALK(ifi->neigh_list, ni)
 	  if (ni->state > NEIGHBOR_EXSTART)
 	    ospf_lsa_lsrt_down(en, ni);
 #endif

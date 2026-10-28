@@ -104,8 +104,8 @@ struct ospf_config
   u8 gr_mode;			/* Graceful restart mode (OSPF_GR_*) */
   uint gr_time;			/* Graceful restart interval */
   uint ecmp;
-  list area_list;		/* list of area configs (struct ospf_area_config) */
-  list vlink_list;		/* list of configured vlinks (struct ospf_iface_patt) */
+  LIST(struct ospf_area_config) area_list;	/* list of area configs */
+  LIST(struct ospf_iface_patt) vlink_list;	/* list of configured vlinks */
 };
 
 struct ospf_area_config
@@ -120,10 +120,10 @@ struct ospf_area_config
   u8 default_nssa;		/* Generate default NSSA route for NSSA+summary area */
   u8 translator;		/* Translator role, for NSSA ABR */
   u32 transint;			/* Translator stability interval */
-  list patt_list;		/* List of iface configs (struct ospf_iface_patt) */
-  list net_list;		/* List of aggregate networks for that area */
-  list enet_list;		/* List of aggregate external (NSSA) networks */
-  list stubnet_list;		/* List of stub networks added to Router LSA */
+  LIST(struct ospf_iface_patt) patt_list;	/* List of iface configs */
+  LIST(struct area_net_config)  net_list,	/* List of aggregate networks for that area */
+			       enet_list;	/* List of aggregate external (NSSA) networks */
+  LIST(struct ospf_stubnet_config) stubnet_list; /* List of stub networks added to Router LSA */
 };
 
 struct area_net_config
@@ -173,7 +173,7 @@ struct ospf_iface_patt
   u32 deadc;
   u32 deadint;
   u32 inftransdelay;
-  list nbma_list;
+  LIST(struct nbma_node) nbma_list;
   u32 priority;
   u32 voa;
   u32 vid;
@@ -219,8 +219,8 @@ struct ospf_proto
   slist lsal;			/* List of all LSA's */
   int calcrt;			/* Routing table calculation scheduled?
 				   0=no, 1=normal, 2=forced reload */
-  list iface_list;		/* List of OSPF interfaces (struct ospf_iface) */
-  list area_list;		/* List of OSPF areas (struct ospf_area) */
+  LIST(struct ospf_iface) iface_list;	/* List of OSPF interfaces */
+  LIST(struct ospf_area) area_list;	/* List of OSPF areas */
   int areano;			/* Number of area I belong to */
   int padj;			/* Number of neighbors in Exchange or Loading state */
   int gr_count;			/* Number of neighbors in graceful restart state */
@@ -262,7 +262,7 @@ struct ospf_area
   struct ospf_area_config *ac;	/* Related area config */
   struct top_hash_entry *rt;	/* My own router LSA */
   struct top_hash_entry *pxr_lsa; /* Originated prefix LSA */
-  list cand;			/* List of candidates for RT calc. */
+  LIST_(struct top_hash_entry, sizeof(snode)) cand;	/* List of candidates for RT calc. */
   struct fib net_fib;		/* Networks to advertise or not */
   struct fib enet_fib;		/* External networks for NSSAs */
   u32 options;			/* Optional features */
@@ -286,7 +286,7 @@ struct ospf_iface
 
   pool *pool;
   sock *sk;			/* IP socket */
-  list neigh_list;		/* List of neighbors (struct ospf_neighbor) */
+  LIST(struct ospf_neighbor) neigh_list;	/* List of neighbors */
   u32 cost;			/* Cost of iface */
   u32 waitint;			/* Number of seconds before changing state from wait */
   u32 rxmtint;			/* Number of seconds between LSA retransmissions */
@@ -336,7 +336,7 @@ struct ospf_iface
   u16 flood_queue_used;		/* The current number of LSAs in flood_queue */
   u16 flood_queue_size;		/* The maximum number of LSAs in flood_queue */
   int fadj;			/* Number of fully adjacent neighbors */
-  list nbma_list;
+  LIST(struct nbma_node) nbma_list;
   u8 priority;			/* A router priority for DR election */
   u8 ioprob;
 #define OSPF_I_OK 0		/* Everything OK */
@@ -402,7 +402,7 @@ struct ospf_neighbor
   timer *dbdes_timer;		/* DBDES exchange timer */
   timer *lsrq_timer;		/* LSA request timer */
   timer *lsrt_timer;		/* LSA retransmission timer */
-  list ackl[2];
+  LIST(struct ospf_lsa_node) ackl[2];
 #define ACKL_DIRECT 0
 #define ACKL_DELAY 1
   timer *ackd_timer;		/* Delayed ack timer */
@@ -668,6 +668,12 @@ struct ospf_lsa_header
   s32 sn;			/* LS Sequence number */
   u16 checksum;
   u16 length;
+};
+
+struct ospf_lsa_node
+{
+  node n;
+  struct ospf_lsa_header lsa;
 };
 
 
@@ -989,7 +995,7 @@ static inline int ospf_get_af(struct ospf_proto *p)
 struct ospf_area *ospf_find_area(struct ospf_proto *p, u32 aid);
 
 static inline struct ospf_area *ospf_main_area(struct ospf_proto *p)
-{ return (p->areano == 1) ? HEAD(p->area_list) : p->backbone; }
+{ return (p->areano == 1) ? LIST_FIRST(p->area_list) : p->backbone; }
 
 static inline int oa_is_stub(struct ospf_area *oa)
 { return (oa->options & (OPT_E | OPT_N)) == 0; }
@@ -1025,10 +1031,7 @@ int ospf_iface_assure_bufsize(struct ospf_iface *ifa, uint plen);
 int ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new);
 void ospf_reconfigure_ifaces(struct ospf_proto *p);
 void ospf_open_vlink_sk(struct ospf_proto *p);
-struct nbma_node *find_nbma_node_(list *nnl, ip_addr ip);
-
-static inline struct nbma_node * find_nbma_node(struct ospf_iface *ifa, ip_addr ip)
-{ return find_nbma_node_(&ifa->nbma_list, ip); }
+struct nbma_node *ospf_iface_find_nbma_node(struct ospf_iface *ifa, ip_addr ip);
 
 static inline u32 ospf_iface_get_data(struct ospf_iface *ifa)
 {

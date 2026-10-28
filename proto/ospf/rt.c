@@ -371,9 +371,7 @@ ri_install_ext(struct ospf_proto *p, net_addr *net, const orta *new)
 static inline struct ospf_iface *
 rt_pos_to_ifa(struct ospf_area *oa, int pos)
 {
-  struct ospf_iface *ifa;
-
-  WALK_LIST(ifa, oa->po->iface_list)
+  LIST_WALK(oa->po->iface_list, ifa)
     if (ifa->oa == oa && pos >= ifa->rt_pos_beg && pos < ifa->rt_pos_end)
       return ifa;
 
@@ -383,9 +381,7 @@ rt_pos_to_ifa(struct ospf_area *oa, int pos)
 static inline struct ospf_iface *
 px_pos_to_ifa(struct ospf_area *oa, int pos)
 {
-  struct ospf_iface *ifa;
-
-  WALK_LIST(ifa, oa->po->iface_list)
+  LIST_WALK(oa->po->iface_list, ifa)
     if (ifa->oa == oa && pos >= ifa->px_pos_beg && pos < ifa->px_pos_end)
       return ifa;
 
@@ -396,8 +392,7 @@ static inline struct ospf_iface *
 rt_find_iface2(struct ospf_area *oa, uint data)
 {
   /* We should handle it differently for unnumbered PTP links */
-  struct ospf_iface *ifa;
-  WALK_LIST(ifa, oa->po->iface_list)
+  LIST_WALK(oa->po->iface_list, ifa)
     if ((ifa->oa == oa) && ifa->addr && (ospf_iface_get_data(ifa) == data))
       return ifa;
 
@@ -407,8 +402,7 @@ rt_find_iface2(struct ospf_area *oa, uint data)
 static inline struct ospf_iface *
 rt_find_iface3(struct ospf_area *oa, uint lif)
 {
-  struct ospf_iface *ifa;
-  WALK_LIST(ifa, oa->po->iface_list)
+  LIST_WALK(oa->po->iface_list, ifa)
     if ((ifa->oa == oa) && (ifa->iface_id == lif))
       return ifa;
 
@@ -631,8 +625,6 @@ static void
 ospf_rt_spfa(struct ospf_area *oa)
 {
   struct ospf_proto *p = oa->po;
-  struct top_hash_entry *act;
-  node *n;
 
   if (oa->rt == NULL)
     return;
@@ -642,22 +634,20 @@ ospf_rt_spfa(struct ospf_area *oa)
   OSPF_TRACE(D_EVENTS, "Starting routing table calculation for area %R", oa->areaid);
 
   /* 16.1. (1) */
-  init_list(&oa->cand);		/* Empty list of candidates */
+  LIST_INIT(oa->cand, cn);		/* Empty list of candidates */
   oa->trcap = 0;
 
   DBG("LSA db prepared, adding me into candidate list.\n");
 
   oa->rt->dist = 0;
   oa->rt->color = CANDIDATE;
-  add_head(&oa->cand, &oa->rt->cn);
+  LIST_ADD_HEAD(oa->cand, oa->rt);
   DBG("RT LSA: rt: %R, id: %R, type: %u\n",
       oa->rt->lsa.rt, oa->rt->lsa.id, oa->rt->lsa_type);
 
-  while (!EMPTY_LIST(oa->cand))
+  LIST_WALK_FIRST(oa->cand, act)
   {
-    n = HEAD(oa->cand);
-    act = SKIP_BACK(struct top_hash_entry, cn, n);
-    rem_node(n);
+    LIST_REMOVE(oa->cand, act);
 
     DBG("Working on LSA: rt: %R, id: %R, type: %u\n",
 	act->lsa.rt, act->lsa.id, act->lsa_type);
@@ -1061,7 +1051,7 @@ check_sum_net_lsa(struct ospf_proto *p, ort *nf)
       return;
 
     /* Find that area network */
-    WALK_LIST(anet_oa, p->area_list)
+    LIST_WALK_(p->area_list, anet_oa)
     {
       anet = fib_find(&anet_oa->net_fib, nf->fn.addr);
       if (anet)
@@ -1069,8 +1059,7 @@ check_sum_net_lsa(struct ospf_proto *p, ort *nf)
     }
   }
 
-  struct ospf_area *oa;
-  WALK_LIST(oa, p->area_list)
+  LIST_WALK(p->area_list, oa)
   {
     if (anet && decide_anet_lsa(oa, anet, anet_oa))
       ospf_originate_sum_net_lsa(p, oa, nf, anet->metric);
@@ -1084,8 +1073,7 @@ check_sum_rt_lsa(struct ospf_proto *p, ort *nf)
 {
   u32 rid = rid_from_net(nf->fn.addr);
 
-  struct ospf_area *oa;
-  WALK_LIST(oa, p->area_list)
+  LIST_WALK(p->area_list, oa)
     if (decide_sum_lsa(oa, nf, ORT_ROUTER))
       ospf_originate_sum_rt_lsa(p, oa, rid, nf->n.metric1, nf->n.options);
 }
@@ -1133,7 +1121,7 @@ check_nssa_lsa(struct ospf_proto *p, ort *nf)
   if (nf->area_net)
   {
     /* Find that area network */
-    WALK_LIST(oa, p->area_list)
+    LIST_WALK_(p->area_list, oa)
     {
       anet = fib_find(&oa->enet_fib, nf->fn.addr);
       if (anet)
@@ -1155,8 +1143,7 @@ check_nssa_lsa(struct ospf_proto *p, ort *nf)
 static void
 ospf_check_vlinks(struct ospf_proto *p)
 {
-  struct ospf_iface *ifa;
-  WALK_LIST(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
   {
     if (ifa->type == OSPF_IT_VLINK)
     {
@@ -1259,8 +1246,7 @@ ospf_rt_abr1(struct ospf_proto *p)
   default_nf = fib_get(&p->rtf, &default_net);
   default_nf->area_net = 1;
 
-  struct ospf_area *oa;
-  WALK_LIST(oa, p->area_list)
+  LIST_WALK(p->area_list, oa)
   {
 
     /* 12.4.3.1. - originate or flush default route for stub/NSSA areas */
@@ -1321,12 +1307,9 @@ translator_timer_hook(timer *timer)
 static void
 ospf_rt_abr2(struct ospf_proto *p)
 {
-  struct ospf_area *oa;
-  struct top_hash_entry *en;
-
   /* RFC 3101 3.1 - type-7 translator election */
   struct ospf_area *bb = p->backbone;
-  WALK_LIST(oa, p->area_list)
+  LIST_WALK(p->area_list, oa)
     if (oa_is_nssa(oa))
     {
       int translate = 1;
@@ -1343,7 +1326,7 @@ ospf_rt_abr2(struct ospf_proto *p)
 	if (!nf2 || !nf2->n.type || !(nf2->n.options & ORTA_ABR))
 	  continue;
 
-	en = ospf_hash_find_rt(p->gr, oa->areaid, nf->n.rid);
+	struct top_hash_entry *en = ospf_hash_find_rt(p->gr, oa->areaid, nf->n.rid);
 	if (!en || (en->color != INSPF))
 	  continue;
 
@@ -1623,9 +1606,6 @@ ospf_ext_spf(struct ospf_proto *p)
 void
 ospf_rt_reset(struct ospf_proto *p)
 {
-  struct ospf_area *oa;
-  struct top_hash_entry *en;
-
   /* Reset old routing table */
   FIB_WALK(&p->rtf, ort, ri)
   {
@@ -1636,6 +1616,7 @@ ospf_rt_reset(struct ospf_proto *p)
   FIB_WALK_END;
 
   /* Reset SPF data in LSA db */
+  struct top_hash_entry *en;
   WALK_SLIST(en, p->lsal)
   {
     en->color = OUTSPF;
@@ -1647,7 +1628,7 @@ ospf_rt_reset(struct ospf_proto *p)
       en->mode = LSA_M_RTCALC_STALE;
   }
 
-  WALK_LIST(oa, p->area_list)
+  LIST_WALK(p->area_list, oa)
   {
     /* Reset ASBR routing tables */
     FIB_WALK(&oa->rtr, ort, ri)
@@ -1687,8 +1668,6 @@ ospf_rt_reset(struct ospf_proto *p)
 void
 ospf_rt_spf(struct ospf_proto *p)
 {
-  struct ospf_area *oa;
-
   if (p->areano == 0)
     return;
 
@@ -1698,14 +1677,14 @@ ospf_rt_spf(struct ospf_proto *p)
   ospf_rt_reset(p);
 
   /* 16. (2) */
-  WALK_LIST(oa, p->area_list)
+  LIST_WALK(p->area_list, oa)
     ospf_rt_spfa(oa);
 
   /* 16. (3) */
   ospf_rt_sum(ospf_main_area(p));
 
   /* 16. (4) */
-  WALK_LIST(oa, p->area_list)
+  LIST_WALK(p->area_list, oa)
     if (oa->trcap && (oa->areaid != 0))
       ospf_rt_sum_tr(oa);
 
@@ -1884,9 +1863,7 @@ add_cand(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry 
 	 u32 dist, int pos, uint data, uint lif, uint nif)
 {
   struct ospf_proto *p = oa->po;
-  node *prev, *n;
   int added = 0;
-  struct top_hash_entry *act;
 
   /* 16.1. (2b) */
   if (en == NULL)
@@ -1962,40 +1939,39 @@ add_cand(struct ospf_area *oa, struct top_hash_entry *en, struct top_hash_entry 
 
   if (en->color == CANDIDATE)
   {				/* We found a shorter path */
-    rem_node(&en->cn);
+    LIST_REMOVE(oa->cand, en);
   }
   en->nhs = nhs;
   en->dist = dist;
   en->color = CANDIDATE;
   en->nhs_reuse = (par->nhs != nhs);
 
-  prev = NULL;
-
-  if (EMPTY_LIST(oa->cand))
+  if (LIST_EMPTY(oa->cand))
   {
-    add_head(&oa->cand, &en->cn);
+    LIST_ADD_HEAD(oa->cand, en);
   }
   else
   {
-    WALK_LIST(n, oa->cand)
+    struct top_hash_entry *prev = NULL;
+
+    LIST_WALK(oa->cand, act)
     {
-      act = SKIP_BACK(struct top_hash_entry, cn, n);
       if ((act->dist > dist) ||
 	  ((act->dist == dist) && (act->lsa_type == LSA_T_RT)))
       {
 	if (prev == NULL)
-	  add_head(&oa->cand, &en->cn);
+	  LIST_ADD_HEAD(oa->cand, en);
 	else
-	  insert_node(&en->cn, prev);
+	  LIST_INSERT(oa->cand, en, prev);
 	added = 1;
 	break;
       }
-      prev = n;
+      prev = act;
     }
 
     if (!added)
     {
-      add_tail(&oa->cand, &en->cn);
+      LIST_ADD_TAIL(oa->cand, en);
     }
   }
 }
@@ -2017,7 +1993,6 @@ rt_sync(struct ospf_proto *p)
   struct top_hash_entry *en;
   struct fib_iterator fit;
   struct fib *fib = &p->rtf;
-  struct ospf_area *oa;
 
   /* This is used for forced reload of routes */
   int reload = (p->calcrt == 2);
@@ -2137,8 +2112,7 @@ again1:
   }
   FIB_ITERATE_END;
 
-
-  WALK_LIST(oa, p->area_list)
+  LIST_WALK(p->area_list, oa)
   {
     /* Cleanup ASBR hash tables */
     FIB_ITERATE_INIT(&fit, &oa->rtr);
@@ -2170,7 +2144,6 @@ ospf_update_gr_recovery(struct ospf_proto *p)
   struct ospf_lsa_rt_walk rtl;
   struct ospf_neighbor *n;
   struct ospf_iface *ifa;
-  struct ospf_area *oa;
   const char *err_dsc = NULL;
   uint i, j, missing = 0, err_val = 0;
 
@@ -2194,7 +2167,7 @@ ospf_update_gr_recovery(struct ospf_proto *p)
   if (current_time() > p->gr_timeout)
     goto timeout;
 
-  WALK_LIST(oa, p->area_list)
+  LIST_WALK(p->area_list, oa)
   {
     /* Get the router-LSA */
     rt = oa->rt;

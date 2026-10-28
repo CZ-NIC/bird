@@ -101,11 +101,19 @@ ospf_iface_assure_bufsize(struct ospf_iface *ifa, uint plen)
 
 
 struct nbma_node *
-find_nbma_node_(list *nnl, ip_addr ip)
+ospf_iface_find_nbma_node(struct ospf_iface *ifa, ip_addr ip)
 {
-  struct nbma_node *nn;
+  LIST_WALK(ifa->nbma_list, nn)
+    if (ipa_equal(nn->ip, ip))
+      return nn;
 
-  WALK_LIST(nn, *nnl)
+  return NULL;
+}
+
+static struct nbma_node *
+ospf_iface_patt_find_nbma_node(struct ospf_iface_patt *ifa, ip_addr ip)
+{
+  LIST_WALK(ifa->nbma_list, nn)
     if (ipa_equal(nn->ip, ip))
       return nn;
 
@@ -241,8 +249,6 @@ static void
 ospf_iface_down(struct ospf_iface *ifa)
 {
   struct ospf_proto *p = ifa->oa->po;
-  struct ospf_neighbor *n, *nx;
-  struct ospf_iface *iff;
 
   if (ifa->type != OSPF_IT_VLINK)
   {
@@ -257,14 +263,14 @@ ospf_iface_down(struct ospf_iface *ifa)
 		 ifa->ifname, &ifa->addr->prefix, ifa->oa->areaid);
 
     /* First of all kill all the related vlinks */
-    WALK_LIST(iff, p->iface_list)
+    LIST_WALK(p->iface_list, iff)
     {
       if ((iff->type == OSPF_IT_VLINK) && (iff->vifa == ifa))
 	ospf_iface_sm(iff, ISM_DOWN);
     }
   }
 
-  WALK_LIST_DELSAFE(n, nx, ifa->neigh_list)
+  LIST_WALK_DELSAFE(ifa->neigh_list, n)
     ospf_neigh_sm(n, INM_KILLNBR);
 
   if (ifa->hello_timer)
@@ -310,7 +316,7 @@ ospf_iface_remove(struct ospf_iface *ifa)
       ifa->flood_queue[i]->ret_count--;
 
   ospf_iface_sm(ifa, ISM_DOWN);
-  rem_node(NODE ifa);
+  LIST_REMOVE(p->iface_list, ifa);
   rfree(ifa->pool);
 }
 
@@ -474,9 +480,7 @@ ospf_iface_classify(u8 type, struct ifa *addr)
 struct ospf_iface *
 ospf_iface_find(struct ospf_proto *p, struct iface *what)
 {
-  struct ospf_iface *ifa;
-
-  WALK_LIST(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
     if ((ifa->iface == what) && (ifa->type != OSPF_IT_VLINK))
       return ifa;
 
@@ -524,7 +528,7 @@ add_nbma_node(struct ospf_iface *ifa, struct nbma_node *src, int found)
   struct nbma_node *n = mb_alloc(ifa->pool, sizeof(struct nbma_node));
 
   n->n = (node) {};
-  add_tail(&ifa->nbma_list, NODE n);
+  LIST_ADD_TAIL(ifa->nbma_list, n);
 
   n->ip = src->ip;
   n->eligible = src->eligible;
@@ -639,11 +643,10 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
     ifa->link_lsa_suppression = ip->link_lsa_suppression;
 
   ifa->state = OSPF_IS_DOWN;
-  init_list(&ifa->neigh_list);
-  init_list(&ifa->nbma_list);
+  LIST_INIT(ifa->neigh_list, n);
+  LIST_INIT(ifa->nbma_list, n);
 
-  struct nbma_node *nb;
-  WALK_LIST(nb, ip->nbma_list)
+  LIST_WALK(ip->nbma_list, nb)
   {
     /* In OSPFv3, addr is link-local while configured neighbors could
        have global IP (although RFC 5340 C.5 says link-local addresses
@@ -660,7 +663,7 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
     add_nbma_node(ifa, nb, 0);
   }
 
-  add_tail(&oa->po->iface_list, NODE ifa);
+  LIST_ADD_TAIL(oa->po->iface_list, ifa);
 
   struct object_lock *lock = olock_new(pool);
   lock->addr = ospf_is_v2(p) ? ipa_from_ip4(net4_prefix(&ifa->addr->prefix)) : IPA_NONE;
@@ -719,10 +722,10 @@ ospf_iface_new_vlink(struct ospf_proto *p, struct ospf_iface_patt *ip)
   ifa->type = OSPF_IT_VLINK;
 
   ifa->state = OSPF_IS_DOWN;
-  init_list(&ifa->neigh_list);
-  init_list(&ifa->nbma_list);
+  LIST_INIT(ifa->neigh_list, n);
+  LIST_INIT(ifa->nbma_list, n);
 
-  add_tail(&p->iface_list, NODE ifa);
+  LIST_ADD_TAIL(p->iface_list, ifa);
 
   ifa->hello_timer = tm_new_init(ifa->pool, hello_timer_hook, ifa, ifa->helloint S, 0);
 
@@ -787,8 +790,7 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
   /* Cancel GR peers if GR is disabled */
   if (!p->gr_mode && p->gr_count)
   {
-    struct ospf_neighbor *n, *nx;
-    WALK_LIST_DELSAFE(n, nx, ifa->neigh_list)
+    LIST_WALK_DELSAFE(ifa->neigh_list, n)
       if (n->gr_active)
 	ospf_neigh_cancel_graceful_restart(n);
   }
@@ -904,12 +906,10 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
     ifa->strictnbma = new->strictnbma;
   }
 
-  struct nbma_node *nb, *nbx;
-
   /* NBMA LIST - remove or update old */
-  WALK_LIST_DELSAFE(nb, nbx, ifa->nbma_list)
+  LIST_WALK_DELSAFE(ifa->nbma_list, nb)
   {
-    struct nbma_node *nb2 = find_nbma_node_(&new->nbma_list, nb->ip);
+    struct nbma_node *nb2 = ospf_iface_patt_find_nbma_node(new, nb->ip);
     if (nb2)
     {
       if (nb->eligible != nb2->eligible)
@@ -923,13 +923,13 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
     {
       OSPF_TRACE(D_EVENTS, "Removing NBMA neighbor %I on %s",
 		       nb->ip, ifname);
-      rem_node(NODE nb);
+      LIST_REMOVE(ifa->nbma_list, nb);
       mb_free(nb);
     }
   }
 
   /* NBMA LIST - add new */
-  WALK_LIST(nb, new->nbma_list)
+  LIST_WALK(new->nbma_list, nb)
   {
     /* See related note in ospf_iface_new() */
     if (ospf_is_v2(p) && !ospf_ipa_local(nb->ip, ifa->addr))
@@ -939,7 +939,7 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
       log(L_WARN "%s: Configured neighbor address (%I) should be link-local",
 	  p->p.name, nb->ip);
 
-    if (! find_nbma_node(ifa, nb->ip))
+    if (! ospf_iface_find_nbma_node(ifa, nb->ip))
     {
       OSPF_TRACE(D_EVENTS, "Adding NBMA neighbor %I on %s",
 		 nb->ip, ifname);
@@ -1042,8 +1042,7 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
 	       new->bfd ? "Enabling" : "Disabling", ifname);
     ifa->bfd = new->bfd;
 
-    struct ospf_neighbor *n;
-    WALK_LIST(n, ifa->neigh_list)
+    LIST_WALK(ifa->neigh_list, n)
       ospf_neigh_update_bfd(n, ifa->bfd);
   }
 
@@ -1087,12 +1086,12 @@ ospf_walk_matching_iface_patts(struct ospf_proto *p, struct ospf_mip_walk *s)
   if (s->ip)
     goto step;
 
-  WALK_LIST(s->oa, p->area_list)
+  LIST_WALK_REENTRANT(p->area_list, s->oa)
   {
     if (s->oa->marked)
       continue;
 
-    WALK_LIST(s->ip, s->oa->ac->patt_list)
+    LIST_WALK_REENTRANT(s->oa->ac->patt_list, s->ip)
     {
       id = s->ip->instance_id;
       if (BIT32_TEST(s->ignore, id))
@@ -1126,9 +1125,7 @@ ospf_walk_matching_iface_patts(struct ospf_proto *p, struct ospf_mip_walk *s)
 static struct ospf_iface *
 ospf_iface_find_by_key(struct ospf_proto *p, struct ifa *a, int instance_id)
 {
-  struct ospf_iface *ifa;
-
-  WALK_LIST(ifa, p->iface_list)
+  LIST_WALK(p->iface_list, ifa)
     if ((ifa->addr == a) && (ifa->instance_id == instance_id) &&
 	(ifa->type != OSPF_IT_VLINK))
       return ifa;
@@ -1161,8 +1158,7 @@ ospf_ifa_notify2(struct proto *P, uint flags, struct ifa *a)
 
   if (flags & IF_CHANGE_DOWN)
   {
-    struct ospf_iface *ifa, *ifx;
-    WALK_LIST_DELSAFE(ifa, ifx, p->iface_list)
+    LIST_WALK_DELSAFE(p->iface_list, ifa)
       if ((ifa->type != OSPF_IT_VLINK) && (ifa->addr == a))
 	ospf_iface_remove(ifa);
     /* See a note in ospf_iface_notify() */
@@ -1196,8 +1192,7 @@ ospf_ifa_notify3(struct proto *P, uint flags, struct ifa *a)
 
     if (flags & IF_CHANGE_DOWN)
     {
-      struct ospf_iface *ifa, *ifx;
-      WALK_LIST_DELSAFE(ifa, ifx, p->iface_list)
+      LIST_WALK_DELSAFE(p->iface_list, ifa)
 	if ((ifa->addr == a) && (ifa->type != OSPF_IT_VLINK))
 	  ospf_iface_remove(ifa);
     }
@@ -1207,8 +1202,7 @@ ospf_ifa_notify3(struct proto *P, uint flags, struct ifa *a)
     if (a->prefix.type != ospf_get_af(p))
       return;
 
-    struct ospf_iface *ifa;
-    WALK_LIST(ifa, p->iface_list)
+    LIST_WALK(p->iface_list, ifa)
       if (ifa->iface == a->iface)
       {
 	/* RFC 5340 4.4.3 Event 5 - prefix added/deleted */
@@ -1383,8 +1377,7 @@ ospf_if_notify(struct proto *P, uint flags, struct iface *iface)
   if (flags & IF_CHANGE_UP)
     return;
 
-  struct ospf_iface *ifa, *ifx;
-  WALK_LIST_DELSAFE(ifa, ifx, p->iface_list)
+  LIST_WALK_DELSAFE(p->iface_list, ifa)
     if (ifa->iface == iface)
       ospf_iface_notify(p, flags, ifa);
 

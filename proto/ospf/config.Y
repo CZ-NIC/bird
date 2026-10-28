@@ -17,7 +17,7 @@ CF_DEFINES
 
 static struct ospf_area_config *this_area;
 static struct nbma_node *this_nbma;
-static list *this_nets;
+static MEMBER_TYPE(struct ospf_area_config, net_list) *this_nets;
 static struct area_net_config *this_pref;
 static struct ospf_stubnet_config *this_stubnet;
 
@@ -81,8 +81,6 @@ static void
 ospf_proto_finish(void)
 {
   struct ospf_config *cf = OSPF_CFG;
-  struct ospf_area_config *ac;
-  struct ospf_iface_patt *ic;
 
   /* Define default channel */
   if (! proto_cf_main_channel(this_proto))
@@ -94,12 +92,12 @@ ospf_proto_finish(void)
   /* Propagate global instance ID to interfaces */
   if (cf->instance_id_set)
   {
-    WALK_LIST(ac, cf->area_list)
-      WALK_LIST(ic, ac->patt_list)
+    LIST_WALK(cf->area_list, ac)
+      LIST_WALK(ac->patt_list, ic)
 	if (!ic->instance_id_set)
 	{ ic->instance_id = cf->instance_id; ic->instance_id_set = 1; }
 
-    WALK_LIST(ic, cf->vlink_list)
+    LIST_WALK(cf->vlink_list, ic)
       if (!ic->instance_id_set)
       { ic->instance_id = cf->instance_id; ic->instance_id_set = 1; }
   }
@@ -113,8 +111,8 @@ ospf_proto_finish(void)
     if (cf->af_ext)
     {
       /* RFC 5838 2.1 - instance IDs based on AFs */
-      WALK_LIST(ac, cf->area_list)
-	WALK_LIST(ic, ac->patt_list)
+      LIST_WALK(cf->area_list, ac)
+	LIST_WALK(ac->patt_list, ic)
 	{
 	  if (!ic->instance_id_set)
 	    ic->instance_id = base;
@@ -125,7 +123,7 @@ ospf_proto_finish(void)
 	}
 
       /* RFC 5838 2.8 - vlinks limited to IPv6 unicast */
-      if ((ipv4 || cf->af_mc) && !EMPTY_LIST(cf->vlink_list))
+      if ((ipv4 || cf->af_mc) && !LIST_EMPTY(cf->vlink_list))
 	cf_error("Vlinks not supported in AFs other than IPv6 unicast");
     }
     else
@@ -135,13 +133,13 @@ ospf_proto_finish(void)
     }
   }
 
-  if (EMPTY_LIST(cf->area_list))
+  if (LIST_EMPTY(cf->area_list))
     cf_error("No configured areas in OSPF");
 
   int areano = 0;
   int backbone = 0;
   int nssa = 0;
-  WALK_LIST(ac, cf->area_list)
+  LIST_WALK(cf->area_list, ac)
   {
     areano++;
     if (ac->areaid == 0)
@@ -159,14 +157,14 @@ ospf_proto_finish(void)
   {
     struct ospf_area_config *ac = cfg_allocz(sizeof(struct ospf_area_config));
     ac->type = OPT_E; /* Backbone is non-stub */
-    add_head(&cf->area_list, NODE ac);
-    init_list(&ac->patt_list);
-    init_list(&ac->net_list);
-    init_list(&ac->enet_list);
-    init_list(&ac->stubnet_list);
+    LIST_ADD_HEAD(cf->area_list, ac);
+    LIST_INIT(ac->patt_list, i.n);
+    LIST_INIT(ac->net_list, n);
+    LIST_INIT(ac->enet_list, n);
+    LIST_INIT(ac->stubnet_list, n);
   }
 
-  if (!cf->abr && !EMPTY_LIST(cf->vlink_list))
+  if (!cf->abr && !LIST_EMPTY(cf->vlink_list))
     cf_error("Vlinks cannot be used on single area router");
 
   if (cf->asbr && (areano == 1) && (this_area->type == 0))
@@ -222,8 +220,8 @@ ospf_proto_start: proto_start ospf_variant
   this_proto = proto_config_new(&proto_ospf, $1);
   this_proto->net_type = $2 ? NET_IP4 : 0;
 
-  init_list(&OSPF_CFG->area_list);
-  init_list(&OSPF_CFG->vlink_list);
+  LIST_INIT(OSPF_CFG->area_list, n);
+  LIST_INIT(OSPF_CFG->vlink_list, i.n);
   OSPF_CFG->ecmp = rt_default_ecmp;
   OSPF_CFG->tick = OSPF_DEFAULT_TICK;
   OSPF_CFG->ospf2 = $2;
@@ -274,16 +272,16 @@ ospf_proto_item:
 
 ospf_area_start: AREA idval {
   this_area = cfg_allocz(sizeof(struct ospf_area_config));
-  add_tail(&OSPF_CFG->area_list, NODE this_area);
+  LIST_ADD_TAIL(OSPF_CFG->area_list, this_area);
   this_area->areaid = $2;
   this_area->default_cost = OSPF_DEFAULT_STUB_COST;
   this_area->type = OPT_E;
   this_area->transint = OSPF_DEFAULT_TRANSINT;
 
-  init_list(&this_area->patt_list);
-  init_list(&this_area->net_list);
-  init_list(&this_area->enet_list);
-  init_list(&this_area->stubnet_list);
+  LIST_INIT(this_area->patt_list, i.n);
+  LIST_INIT(this_area->net_list, n);
+  LIST_INIT(this_area->enet_list, n);
+  LIST_INIT(this_area->stubnet_list, n);
  }
  ;
 
@@ -320,7 +318,7 @@ ospf_stubnet:
 ospf_stubnet_start:
    net_ip {
      this_stubnet = cfg_allocz(sizeof(struct ospf_stubnet_config));
-     add_tail(&this_area->stubnet_list, NODE this_stubnet);
+     LIST_ADD_TAIL(this_area->stubnet_list, this_stubnet);
      this_stubnet->prefix = $1;
      this_stubnet->cost = COST_D;
    }
@@ -364,7 +362,7 @@ ospf_vlink_start: VIRTUAL LINK idval
  {
   if (this_area->areaid == 0) cf_error("Virtual link cannot be in backbone");
   this_ipatt = cfg_allocz(sizeof(struct ospf_iface_patt));
-  add_tail(&OSPF_CFG->vlink_list, NODE this_ipatt);
+  LIST_ADD_TAIL(OSPF_CFG->vlink_list, OSPF_PATT);
   init_list(&this_ipatt->ipn_list);
   OSPF_PATT->voa = this_area->areaid;
   OSPF_PATT->vid = $3;
@@ -373,7 +371,7 @@ ospf_vlink_start: VIRTUAL LINK idval
   OSPF_PATT->inftransdelay = INFTRANSDELAY_D;
   OSPF_PATT->deadc = DEADC_D;
   OSPF_PATT->type = OSPF_IT_VLINK;
-  init_list(&OSPF_PATT->nbma_list);
+  LIST_INIT(OSPF_PATT->nbma_list, n);
   reset_passwords();
  }
 ;
@@ -430,7 +428,7 @@ pref_item: pref_base pref_opt ';' ;
 pref_base: net_ip
  {
    this_pref = cfg_allocz(sizeof(struct area_net_config));
-   add_tail(this_nets, NODE this_pref);
+   LIST_ADD_TAIL(*this_nets, this_pref);
    this_pref->prefix = $1;
  }
 ;
@@ -454,7 +452,7 @@ nbma_eligible:
 nbma_item: ipa nbma_eligible ';'
  {
    this_nbma = cfg_allocz(sizeof(struct nbma_node));
-   add_tail(&OSPF_PATT->nbma_list, NODE this_nbma);
+   LIST_ADD_TAIL(OSPF_PATT->nbma_list, this_nbma);
    this_nbma->ip=$1;
    this_nbma->eligible=$2;
  }
@@ -463,7 +461,7 @@ nbma_item: ipa nbma_eligible ';'
 ospf_iface_start:
  {
   this_ipatt = cfg_allocz(sizeof(struct ospf_iface_patt));
-  add_tail(&this_area->patt_list, NODE this_ipatt);
+  LIST_ADD_TAIL(this_area->patt_list, OSPF_PATT);
   init_list(&this_ipatt->ipn_list);
   OSPF_PATT->cost = COST_D;
   OSPF_PATT->helloint = HELLOINT_D;
@@ -473,7 +471,7 @@ ospf_iface_start:
   OSPF_PATT->priority = PRIORITY_D;
   OSPF_PATT->deadc = DEADC_D;
   OSPF_PATT->type = OSPF_IT_UNDEF;
-  init_list(&OSPF_PATT->nbma_list);
+  LIST_INIT(OSPF_PATT->nbma_list, n);
   OSPF_PATT->check_link = 1;
   OSPF_PATT->ptp_netmask = 2; /* not specified */
   OSPF_PATT->ptp_address = 2; /* not specified */
