@@ -56,8 +56,6 @@ ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
 {
   struct ospf_proto *p = ifa->oa->po;
   struct ospf_packet *pkt;
-  struct ospf_neighbor *neigh, *n1;
-  struct nbma_node *nb;
   u32 *neighbors;
   uint length;
   int i, max;
@@ -114,7 +112,7 @@ ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
   /* Fill all neighbors */
   if (kind != OHS_SHUTDOWN)
   {
-    WALK_LIST(neigh, ifa->neigh_list)
+    LIST_WALK(ifa->neigh_list, neigh)
     {
       if (i == max)
       {
@@ -150,13 +148,13 @@ ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
 
     if (kind == OHS_POLL)	/* Poll timer */
     {
-      WALK_LIST(nb, ifa->nbma_list)
+      LIST_WALK(ifa->nbma_list, nb)
 	if (!nb->found && (to_all || (me_elig && nb->eligible)))
 	  ospf_send_to(ifa, nb->ip);
     }
     else			/* Hello timer */
     {
-      WALK_LIST(n1, ifa->neigh_list)
+      LIST_WALK(ifa->neigh_list, n1)
 	if (to_all || (me_elig && (n1->priority > 0)) ||
 	    (n1->rid == ifa->drid) || (n1->rid == ifa->bdrid))
 	  ospf_send_to(ifa, n1->ip);
@@ -164,16 +162,16 @@ ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
     break;
 
   case OSPF_IT_PTMP:
-    WALK_LIST(n1, ifa->neigh_list)
+    LIST_WALK(ifa->neigh_list, n1)
       ospf_send_to(ifa, n1->ip);
 
-    WALK_LIST(nb, ifa->nbma_list)
+    LIST_WALK(ifa->nbma_list, nb)
       if (!nb->found)
 	ospf_send_to(ifa, nb->ip);
 
     /* If there is no other target, we also send HELLO packet to the other end */
     if (ipa_nonzero(ifa->addr->opposite) && !ifa->strictnbma &&
-	EMPTY_LIST(ifa->neigh_list) && EMPTY_LIST(ifa->nbma_list))
+	LIST_EMPTY(ifa->neigh_list) && LIST_EMPTY(ifa->nbma_list))
       ospf_send_to(ifa, ifa->addr->opposite);
     break;
 
@@ -310,7 +308,7 @@ ospf_receive_hello(struct ospf_packet *pkt, struct ospf_iface *ifa,
   {
     if ((ifa->type == OSPF_IT_NBMA) || (ifa->type == OSPF_IT_PTMP))
     {
-      struct nbma_node *nn = find_nbma_node(ifa, faddr);
+      struct nbma_node *nn = ospf_iface_find_nbma_node(ifa, faddr);
 
       if (!nn && ifa->strictnbma)
 	DROP1("new neighbor denied");
