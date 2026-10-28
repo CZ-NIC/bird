@@ -159,7 +159,7 @@ struct top_hash_entry
 struct top_graph
 {
   pool *pool;			/* Pool we allocate from */
-  slab *hash_slab;		/* Slab for hash entries */
+  SLAB(struct top_hash_entry) hash_slab; /* Slab for hash entries */
   struct top_hash_entry **hash_table;	/* Hashing (modelled a`la fib) */
   uint ospf2;			/* Whether it is for OSPFv2 or OSPFv3 */
   uint hash_size;

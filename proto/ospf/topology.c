@@ -2014,7 +2014,7 @@ ospf_top_new(struct ospf_proto *p, pool *pool)
 
   f = mb_allocz(pool, sizeof(struct top_graph));
   f->pool = pool;
-  f->hash_slab = sl_new(f->pool, sizeof(struct top_hash_entry));
+  SLAB_INIT(f->hash_slab, f->pool);
   f->hash_order = HASH_DEF_ORDER;
   ospf_top_ht_alloc(f);
   f->hash_entries = 0;
@@ -2026,7 +2026,7 @@ ospf_top_new(struct ospf_proto *p, pool *pool)
 void
 ospf_top_free(struct top_graph *f)
 {
-  rfree(f->hash_slab);
+  SLAB_FREE(f->hash_slab);
   ospf_top_ht_free(f->hash_table);
   mb_free(f);
 }
@@ -2166,7 +2166,7 @@ ospf_hash_get(struct top_graph *f, u32 domain, u32 lsa, u32 rtr, u32 type)
   if (e)
     return e;
 
-  e = sl_allocz(f->hash_slab);
+  e = SL_ALLOCZ(f->hash_slab);
   e->color = OUTSPF;
   e->dist = LSINFINITY;
   e->lsa.type_raw = type;
@@ -2193,7 +2193,7 @@ ospf_hash_delete(struct top_graph *f, struct top_hash_entry *e)
     if (*ee == e)
     {
       *ee = e->next;
-      sl_free(e);
+      SL_FREE(f->hash_slab, e);
       if (f->hash_entries-- < f->hash_entries_min)
 	ospf_top_rehash(f, -HASH_LO_STEP);
       return;
