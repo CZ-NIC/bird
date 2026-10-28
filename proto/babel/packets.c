@@ -1476,11 +1476,11 @@ babel_send_to(struct babel_iface *ifa, ip_addr dest)
  * The TLVs in the queue are freed after they are written to the buffer.
  */
 static uint
-babel_write_queue(struct babel_iface *ifa, list *queue)
+babel_write_queue(struct babel_iface *ifa, MEMBER_TYPE(struct babel_iface, msg_queue) *queue)
 {
   struct babel_write_state state = { .next_hop_ip6 = ifa->addr };
 
-  if (EMPTY_LIST(*queue))
+  if (LIST_EMPTY(*queue))
     return 0;
 
   byte *pos = ifa->sk->tbuf;
@@ -1492,8 +1492,7 @@ babel_write_queue(struct babel_iface *ifa, list *queue)
   pkt->length = 0;
   pos += sizeof(struct babel_pkt_header);
 
-  struct babel_msg_node *msg;
-  WALK_LIST_FIRST(msg, *queue)
+  LIST_WALK_FIRST(*queue, msg)
   {
     if (pos >= end)
       break;
@@ -1504,7 +1503,7 @@ babel_write_queue(struct babel_iface *ifa, list *queue)
       break;
 
     pos += len;
-    rem_node(NODE msg);
+    LIST_REMOVE(*queue, msg);
     sl_free(msg);
   }
 
@@ -1551,16 +1550,16 @@ babel_send_unicast(union babel_msg *msg, struct babel_iface *ifa, ip_addr dest)
 {
   struct babel_proto *p = ifa->proto;
   struct babel_msg_node *msgn = SL_ALLOC(p->msg_slab);
-  list queue;
+  MEMBER_TYPE(struct babel_iface, msg_queue) queue;
 
   *msgn = (struct babel_msg_node) { .msg = *msg };
-  init_list(&queue);
-  add_tail(&queue, NODE msgn);
+  LIST_INIT(queue, n);
+  LIST_ADD_TAIL(queue, msgn);
   babel_write_queue(ifa, &queue);
   babel_send_to(ifa, dest);
 
   /* We could overwrite waiting packet here, we may have to kick TX queue */
-  if (!EMPTY_LIST(ifa->msg_queue))
+  if (!LIST_EMPTY(ifa->msg_queue))
     babel_kick_queue(ifa);
 }
 
@@ -1582,7 +1581,7 @@ babel_enqueue(union babel_msg *msg, struct babel_iface *ifa)
   struct babel_msg_node *msgn = SL_ALLOC(p->msg_slab);
 
   *msgn = (struct babel_msg_node) { .msg = *msg };
-  add_tail(&ifa->msg_queue, NODE msgn);
+  LIST_ADD_TAIL(ifa->msg_queue, msgn);
   babel_kick_queue(ifa);
 }
 
@@ -1614,9 +1613,6 @@ babel_process_packet(struct babel_iface *ifa,
   u8 frame_err UNUSED = 0;
   struct babel_proto *p = ifa->proto;
   struct babel_tlv *tlv;
-  struct babel_msg_node *msg;
-  list msgs;
-  int res;
 
   int plen = sizeof(struct babel_pkt_header) + get_u16(&pkt->length);
   byte *end = (byte *)pkt + plen;
@@ -1658,17 +1654,18 @@ babel_process_packet(struct babel_iface *ifa,
   if (!babel_auth_check(ifa, saddr, sport, daddr, dport, pkt, end, len - plen))
     return;
 
-  init_list(&msgs);
+  LIST(struct babel_msg_node) msgs;
+  LIST_INIT(msgs, n);
 
   /* First pass through the packet TLV by TLV, parsing each into internal data
      structures. */
   WALK_TLVS(FIRST_TLV(pkt), end, tlv, frame_err, saddr, ifa->iface->name)
   {
-    msg = SL_ALLOCZ(p->msg_slab);
-    res = babel_read_tlv(tlv, &msg->msg, &state);
+    struct babel_msg_node *msg = SL_ALLOCZ(p->msg_slab);
+    int res = babel_read_tlv(tlv, &msg->msg, &state);
     if (res == PARSE_SUCCESS)
     {
-      add_tail(&msgs, NODE msg);
+      LIST_ADD_TAIL(msgs, msg);
     }
     else if (res == PARSE_IGNORE)
     {
@@ -1686,11 +1683,12 @@ babel_process_packet(struct babel_iface *ifa,
   WALK_TLVS_END;
 
   /* Parsing done, handle all parsed TLVs, regardless of any errors */
-  WALK_LIST_FIRST(msg, msgs)
+  LIST_WALK_FIRST(msgs, msg)
   {
     if (tlv_data[msg->msg.type].handle_tlv)
       tlv_data[msg->msg.type].handle_tlv(&msg->msg, ifa);
-    rem_node(NODE msg);
+
+    LIST_REMOVE(msgs, msg);
     SL_FREE(p->msg_slab, msg);
   }
 }

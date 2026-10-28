@@ -187,7 +187,7 @@ struct babel_proto {
   struct channel *ip4_channel;
   struct channel *ip6_channel;
 
-  list interfaces;			/* Interfaces we really know about (struct babel_iface) */
+  LIST(struct babel_iface) interfaces;	/* Interfaces we really know about */
   u64 router_id;
   u16 update_seqno;			/* To be increased on request */
   u8 update_seqno_inc;			/* Request for update_seqno increase */
@@ -218,8 +218,8 @@ struct babel_iface {
   ip_addr next_hop_ip4;
   ip_addr next_hop_ip6;
   int tx_length;
-  list neigh_list;			/* List of neighbors seen on this iface (struct babel_neighbor) */
-  list msg_queue;
+  LIST(struct babel_neighbor) neigh_list;	/* List of neighbors seen on this iface */
+  LIST(struct babel_msg_node) msg_queue;
 
   u16 hello_seqno;			/* To be increased on each hello */
 
@@ -269,7 +269,7 @@ struct babel_neighbor {
   btime ihu_expiry;
   btime init_expiry;
 
-  list routes;				/* Routes this neighbour has sent us (struct babel_route) */
+  LIST_(struct babel_route, sizeof(node)) routes;	/* Routes this neighbour has sent us */
 };
 
 struct babel_source {
@@ -311,9 +311,9 @@ struct babel_seqno_request {
 struct babel_entry {
   struct babel_route *selected;
 
-  list routes;				/* Routes for this prefix (struct babel_route) */
-  list sources;				/* Source entries for this prefix (struct babel_source). */
-  list requests;
+  LIST(struct babel_route) routes;	/* Routes for this prefix */
+  LIST(struct babel_source) sources;	/* Source entries for this prefix */
+  LIST(struct babel_seqno_request) requests;
 
   u8 valid;				/* Entry validity state (BABEL_ENTRY_*) */
   u8 unreachable;			/* Unreachable route is announced */
