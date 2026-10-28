@@ -135,7 +135,7 @@ enum babel_ae_type {
 
 struct babel_config {
   struct proto_config c;
-  list iface_list;			/* List of iface configs (struct babel_iface_config) */
+  LIST(struct babel_iface_config) iface_list;	/* List of iface configs */
   uint hold_time;			/* Time to hold stale entries and unreachable routes */
   u8 randomize_router_id;
 
@@ -157,9 +157,9 @@ struct babel_iface_config {
 
   btime rtt_min;			/* rtt above which to start penalising metric */
   btime rtt_max;			/* max rtt metric penalty applied above this */
-  u16 rtt_cost;			/* metric penalty to apply at rtt_max */
+  u16 rtt_cost;				/* metric penalty to apply at rtt_max */
   u16 rtt_decay;			/* decay of neighbour RTT (units of 1/256) */
-  u8  rtt_send;			/* whether to send timestamps on this interface */
+  u8  rtt_send;				/* whether to send timestamps on this interface */
 
   u16 rx_buffer;			/* RX buffer size, 0 for MTU */
   u16 tx_length;			/* TX packet length limit (including headers), 0 for MTU */
@@ -187,7 +187,7 @@ struct babel_proto {
   struct channel *ip4_channel;
   struct channel *ip6_channel;
 
-  list interfaces;			/* Interfaces we really know about (struct babel_iface) */
+  LIST(struct babel_iface) interfaces;	/* Interfaces we really know about */
   u64 router_id;
   u16 update_seqno;			/* To be increased on request */
   u8 update_seqno_inc;			/* Request for update_seqno increase */
@@ -218,8 +218,8 @@ struct babel_iface {
   ip_addr next_hop_ip4;
   ip_addr next_hop_ip6;
   int tx_length;
-  list neigh_list;			/* List of neighbors seen on this iface (struct babel_neighbor) */
-  list msg_queue;
+  LIST(struct babel_neighbor) neigh_list;	/* List of neighbors seen on this iface */
+  LIST(struct babel_msg_node) msg_queue;
 
   u16 hello_seqno;			/* To be increased on each hello */
 
@@ -269,7 +269,7 @@ struct babel_neighbor {
   btime ihu_expiry;
   btime init_expiry;
 
-  list routes;				/* Routes this neighbour has sent us (struct babel_route) */
+  LIST_(struct babel_route, sizeof(node)) routes;	/* Routes this neighbour has sent us */
 };
 
 struct babel_source {
@@ -311,9 +311,9 @@ struct babel_seqno_request {
 struct babel_entry {
   struct babel_route *selected;
 
-  list routes;				/* Routes for this prefix (struct babel_route) */
-  list sources;				/* Source entries for this prefix (struct babel_source). */
-  list requests;
+  LIST(struct babel_route) routes;	/* Routes for this prefix */
+  LIST(struct babel_source) sources;	/* Source entries for this prefix */
+  LIST(struct babel_seqno_request) requests;
 
   u8 valid;				/* Entry validity state (BABEL_ENTRY_*) */
   u8 unreachable;			/* Unreachable route is announced */
