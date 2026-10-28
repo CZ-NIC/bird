@@ -36,7 +36,7 @@ proto: babel_proto ;
 babel_proto_start: proto_start BABEL
 {
   this_proto = proto_config_new(&proto_babel, $1);
-  init_list(&BABEL_CFG->iface_list);
+  LIST_INIT(BABEL_CFG->iface_list, i.n);
   BABEL_CFG->hold_time = 1 S_;
 };
 
@@ -59,7 +59,7 @@ babel_proto:
 babel_iface_start:
 {
   this_ipatt = cfg_allocz(sizeof(struct babel_iface_config));
-  add_tail(&BABEL_CFG->iface_list, NODE this_ipatt);
+  LIST_ADD_TAIL(BABEL_CFG->iface_list, BABEL_IFACE);
   init_list(&this_ipatt->ipn_list);
   reset_passwords();
 

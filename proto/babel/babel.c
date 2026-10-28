@@ -1960,7 +1960,7 @@ babel_if_notify(struct proto *P, unsigned flags, struct iface *iface)
     if (!iface->llv6)
       return;
 
-    struct babel_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
+    struct babel_iface_config *ic = (void *) iface_patt_find(LIST_IN(cf->iface_list), iface, NULL);
 
     if (ic && iface_is_valid(p, iface))
       babel_add_iface(p, iface, ic);
@@ -2041,7 +2041,7 @@ babel_reconfigure_ifaces(struct babel_proto *p, struct babel_config *cf)
       continue;
 
     struct babel_iface *ifa = babel_find_iface(p, iface);
-    struct babel_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
+    struct babel_iface_config *ic = (void *) iface_patt_find(LIST_IN(cf->iface_list), iface, NULL);
 
     if (ic && !iface_is_valid(p, iface))
       ic = NULL;

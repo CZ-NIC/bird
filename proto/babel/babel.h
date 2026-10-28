@@ -135,7 +135,7 @@ enum babel_ae_type {
 
 struct babel_config {
   struct proto_config c;
-  list iface_list;			/* List of iface configs (struct babel_iface_config) */
+  LIST(struct babel_iface_config) iface_list;	/* List of iface configs */
   uint hold_time;			/* Time to hold stale entries and unreachable routes */
   u8 randomize_router_id;
 
@@ -157,9 +157,9 @@ struct babel_iface_config {
 
   btime rtt_min;			/* rtt above which to start penalising metric */
   btime rtt_max;			/* max rtt metric penalty applied above this */
-  u16 rtt_cost;			/* metric penalty to apply at rtt_max */
+  u16 rtt_cost;				/* metric penalty to apply at rtt_max */
   u16 rtt_decay;			/* decay of neighbour RTT (units of 1/256) */
-  u8  rtt_send;			/* whether to send timestamps on this interface */
+  u8  rtt_send;				/* whether to send timestamps on this interface */
 
   u16 rx_buffer;			/* RX buffer size, 0 for MTU */
   u16 tx_length;			/* TX packet length limit (including headers), 0 for MTU */
