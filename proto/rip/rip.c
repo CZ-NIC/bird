@@ -805,7 +805,7 @@ rip_reconfigure_ifaces(struct rip_proto *p, struct rip_config *cf)
       continue;
 
     struct rip_iface *ifa = rip_find_iface(p, iface);
-    struct rip_iface_config *ic = (void *) iface_patt_find(&cf->patt_list, iface, NULL);
+    struct rip_iface_config *ic = (void *) iface_patt_find(LIST_IN(cf->patt_list), iface, NULL);
 
     if (ifa && ic)
     {
@@ -849,7 +849,7 @@ rip_if_notify(struct proto *P, unsigned flags, struct iface *iface)
     if (rip_is_v2(p) ? !iface->addr4 : !iface->llv6)
       return;
 
-    struct rip_iface_config *ic = (void *) iface_patt_find(&cf->patt_list, iface, NULL);
+    struct rip_iface_config *ic = (void *) iface_patt_find(LIST_IN(cf->patt_list), iface, NULL);
     if (ic)
       rip_add_iface(p, iface, ic);
 

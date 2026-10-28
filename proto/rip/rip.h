@@ -47,7 +47,7 @@
 struct rip_config
 {
   struct proto_config c;
-  list patt_list;			/* List of iface configs (struct rip_iface_config) */
+  LIST(struct rip_iface_config) patt_list;	/* List of iface configs */
 
   u8 rip2;				/* RIPv2 (IPv4) or RIPng (IPv6) */
   u8 ecmp;				/* Maximum number of nexthops in ECMP route, or 0 */

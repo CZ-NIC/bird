@@ -56,7 +56,7 @@ rip_proto_start: proto_start rip_variant
   this_proto = proto_config_new(&proto_rip, $1);
   this_proto->net_type = $2 ? NET_IP4 : NET_IP6;
 
-  init_list(&RIP_CFG->patt_list);
+  LIST_INIT(RIP_CFG->patt_list, i.n);
   RIP_CFG->rip2 = $2;
   RIP_CFG->ecmp = rt_default_ecmp;
   RIP_CFG->infinity = RIP_DEFAULT_INFINITY;
@@ -85,7 +85,7 @@ rip_proto:
 rip_iface_start:
 {
   this_ipatt = cfg_allocz(sizeof(struct rip_iface_config));
-  add_tail(&RIP_CFG->patt_list, NODE this_ipatt);
+  LIST_ADD_TAIL(RIP_CFG->patt_list, RIP_IFACE);
   init_list(&this_ipatt->ipn_list);
   reset_passwords();
 
