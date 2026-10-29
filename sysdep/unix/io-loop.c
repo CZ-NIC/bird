@@ -997,6 +997,7 @@ bird_thread_main(void *arg)
   THREAD_TRACE(DL_SCHEDULING, "Started");
 
   tmp_init(thr->pool);
+  random_init_thread();
 
   defer_init(lp_new(thr->pool));
 
