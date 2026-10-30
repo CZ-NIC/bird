@@ -995,7 +995,11 @@ bmp_send_termination_msg(struct bmp_proto *p, enum bmp_term_reason reason)
   p->sk->tbuf = stream.start;
   if (sk_send(p->sk, stream.pos - stream.start) < 0)
     log(L_WARN "%s: Cannot send BMP termination message", p->p.name);
-  p->sk->tbuf = NULL;
+
+  /* If the socket closes just in time to hit BMP shutdown, the sk_send() call
+   * may fail and close+remove the socket synchronously */
+  if (p->sk)
+    p->sk->tbuf = NULL;
 }
 
 int
