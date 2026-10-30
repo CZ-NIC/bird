@@ -903,7 +903,16 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   { bgp_error(conn, 1, 2, pkt+16, 2); return; }
 
   if (pkt[19] != BGP_VERSION)
-  { u16 val = BGP_VERSION; bgp_error(conn, 2, 1, (byte *) &val, 2); return; }
+  {
+    /* We support only version 4 but if we support more versions in future, we
+     * have to calculate here the nearest supported version number to pkt[19].
+     * See RFC 4271 Sec. 6.2.
+     */
+    byte *val = mb_allocz(p->p.pool, 2);
+    put_u16(val, BGP_VERSION);
+    bgp_error(conn, 2, 1, val, 2);
+    return;
+  }
 
   asn = get_u16(pkt+20);
   hold = get_u16(pkt+22);
