@@ -969,7 +969,12 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 
     /* When remote ASN is unspecified, it must be external one */
     if (p->remote_as ? (as4 != p->remote_as) : (as4 == p->local_as))
-    { as4 = htonl(as4); bgp_error(conn, 2, 2, (byte *) &as4, 4); return; }
+    {
+      byte *as4b = mb_allocz(p->p.pool, 4);
+      put_u32(as4b, as4);
+      bgp_error(conn, 2, 2, as4b, 4);
+      return;
+    }
 
     conn->received_as = as4;
   }
