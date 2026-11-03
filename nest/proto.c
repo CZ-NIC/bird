@@ -942,6 +942,7 @@ channel_start_export(struct channel *c)
       c->out_event.hook = channel_notify_merged;
       rt_export_subscribe(c->table, best, &c->out_req);
       /* All routes via Alt hook */
+      rt_export_subscribe(c->table, all, &c->out_req);
       break;
     default:
       bug("Unknown route announcement mode");
