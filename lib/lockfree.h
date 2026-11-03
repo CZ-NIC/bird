@@ -226,7 +226,7 @@ enum lfjour_recipient_flags {
 struct lfjour {
   struct domain_generic *domain;		/* The journal itself belongs to this domain (if different from the loop) */
   struct birdloop *loop;			/* Cleanup loop */
-  u32 item_size, item_count;			/* Allocation parameters */
+  u32 item_size, item_size_aligned, item_count;	/* Allocation parameters */
   struct lfjour_block_list pending;		/* List of packed journal blocks */
   struct lfjour_item * _Atomic first;		/* First journal item to announce */
   struct lfjour_item *open;			/* Journal item in progress */
