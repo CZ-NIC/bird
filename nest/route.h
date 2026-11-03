@@ -206,6 +206,7 @@ struct rt_export_union {
     uint count_routes, count_exports;
     struct netindex *ni;
     rte *block;
+    u32 best_rte_idx;
     u64 *exports;
     char data[0];
   } *feed;
@@ -418,7 +419,8 @@ struct rtable_private {
 					 */
 
   struct deferred_call *reconf_end;	/* Reconfiguration done callback */
-  struct lfjour_recipient best_req;	/* Internal request from best route announcement cleanup */
+  struct lfjour_recipient all_req;	/* Internal request for best route recalculation cleanup */
+  struct rt_pending_export *last_best_rpe;	/* Last RPE in best for best route selection flush */
   struct rt_uncork_callback nhu_uncork;	/* Helper event to schedule NHU on uncork */
   struct rt_uncork_callback hcu_uncork;	/* Helper event to schedule HCU on uncork */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
@@ -437,6 +439,7 @@ struct rtable_private {
   byte nhu_corked;			/* Next Hop Update is corked with this state */
   byte export_used;			/* Pending Export pruning is scheduled */
   byte cork_active;			/* Cork has been activated */
+  byte all_req_valid;
   struct rt_cork_threshold cork_threshold;	/* Threshold for table cork */
   u32 prune_index;			/* Rtable prune FIB iterator */
   u32 nhu_index;			/* Next Hop Update FIB iterator */
@@ -543,7 +546,7 @@ static inline bool rt_cork_check(struct rt_uncork_callback *rcc)
 struct rt_pending_export {
   struct rt_export_item it;
   struct rt_pending_export *_Atomic next;	/* Next export for the same net */
-  u64 seq_all;					/* Interlink from BEST to ALL */
+  struct rt_pending_export *all;		/* Interlink from BEST to ALL */
 };
 
 struct rt_net_pending_export {
@@ -551,6 +554,7 @@ struct rt_net_pending_export {
 };
 
 typedef struct network {
+  const rte *_Atomic best_rte;                  /* The best route */
   struct rte_storage * _Atomic routes;		/* Available routes for this network */
 
   /* Uncleaned pending exports */
@@ -793,9 +797,9 @@ static inline void rt_unlock_table_pub(rtable *t, const char *file, uint line)
 { RT_LOCKED(t, tt) rt_unlock_table_priv(tt, file, line); }
 
 #define rt_lock_table(t)	_Generic((t),  rtable *: rt_lock_table_pub, \
-				struct rtable_private *: rt_lock_table_priv)((t), __FILE__, __LINE__)
+				struct rtable_private *: rt_lock_table_priv)((t), __FILE__, __LINE__);
 #define rt_unlock_table(t)	_Generic((t),  rtable *: rt_unlock_table_pub, \
-				struct rtable_private *: rt_unlock_table_priv)((t), __FILE__, __LINE__)
+				struct rtable_private *: rt_unlock_table_priv)((t), __FILE__, __LINE__);
 
 const struct f_trie * rt_lock_trie(struct rtable_private *tab);
 void rt_unlock_trie(struct rtable_private *tab, const struct f_trie *trie);
