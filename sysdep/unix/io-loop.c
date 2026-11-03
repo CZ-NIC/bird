@@ -404,7 +404,7 @@ socket_changed(struct birdsock *s, bool recalculate_sk_info)
 
   if (loop != &main_birdloop && recalculate_sk_info)
   {
-    int size = loop->sock_num * sk_max_dump_len + 17;
+    int size = loop->sock_num * sk_max_dump_len + 18;
     char *new_info = mb_alloc(loop->pool, size);
 
     node *n;
