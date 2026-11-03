@@ -29,10 +29,10 @@ void lfuc_unlock_deferred(struct deferred_call *dc)
 #define lfjour_debug_detailed(...)
 #endif
 
-#define LBI(j, b, p)  ((struct lfjour_item *)(((void *) (b)->_block) + ((j)->item_size * (p))))
+#define LBI(j, b, p)  ((struct lfjour_item *)(((void *) (b)->_block) + ((j)->item_size_aligned * (p))))
 #define LBP(j, b, i)  ({ \
     off_t off = ((void *) (i)) - ((void *) (b)->_block); \
-    u32 s = (j)->item_size; \
+    u32 s = (j)->item_size_aligned; \
     ASSERT_DIE(off < page_size); \
     ASSERT_DIE((off % s) == 0); \
     off / s; \
@@ -602,7 +602,7 @@ lfjour_cleanup_hook(void *_j)
   if (first_to_poison)
   {
     ASSERT_DIE(PAGE_HEAD(first_to_poison) == PAGE_HEAD(last_to_poison));
-    memset(first_to_poison, POISON_LFJOUR_ITEM, (last_to_poison - first_to_poison) + j->item_size);
+    memset(first_to_poison, POISON_LFJOUR_ITEM, (last_to_poison - first_to_poison) + j->item_size_aligned);
   }
 #endif
 
@@ -618,8 +618,8 @@ lfjour_init(struct lfjour *j, struct settle_config *scf)
   ASSERT_DIE(j->loop);
   ASSERT_DIE(j->item_size >= sizeof(struct lfjour_item));
 
-  j->item_size = BIRD_CPU_ALIGN(j->item_size);
-  j->item_count = (page_size - sizeof(struct lfjour_block)) / j->item_size;
+  j->item_size_aligned = BIRD_CPU_ALIGN(j->item_size);
+  j->item_count = (page_size - sizeof(struct lfjour_block)) / j->item_size_aligned;
 
   j->next_seq = 1;
   j->announce_kick_event = (event) {
@@ -637,7 +637,7 @@ lfjour_init(struct lfjour *j, struct settle_config *scf)
 void
 lfjour_dump(struct dump_request *dreq, struct lfjour *j)
 {
-  RDUMP("item_size=%u, item_count=%u\n", j->item_size, j->item_count);
+  RDUMP("item_size=%u, item_size_aligned=%u, item_count=%u\n", j->item_size, j->item_size_aligned, j->item_count);
 
   struct lfjour_item *first = atomic_load_explicit(&j->first, memory_order_relaxed);
   RDUMP("first=%p", first);
