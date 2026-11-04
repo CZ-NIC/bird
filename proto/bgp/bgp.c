@@ -1137,9 +1137,9 @@ bgp_close_conn(struct bgp_conn *conn)
 
   proto_announce_state_later(&conn->bgp->p, pes);
 
-  mb_free(conn->local_caps);
+  bgp_free_capabilities(conn->local_caps);
   conn->local_caps = NULL;
-  mb_free(conn->remote_caps);
+  bgp_free_capabilities(conn->remote_caps);
   conn->remote_caps = NULL;
 
   mb_free(conn->notify_data);
