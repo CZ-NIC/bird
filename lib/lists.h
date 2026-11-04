@@ -99,4 +99,114 @@ void insert_node(node *, node *);
 uint list_length(list *);
 #endif
 
+
+/*
+ * Type-safe macro wrappers around lists. The type of the node is encoded in the
+ * list head structure, as well as the offset of the struct node in the type of
+ * the node. There are two caveats compared to untyped lists:
+ *
+ * - The proper LIST2() macro requires knowledge of full type definition (rather
+ * than just forward declaration) for node types. This conflicts with top-down
+ * order of structure type definitions. This can be worked around by using
+ * LIST() macro (assuming zero offset) or LIST_() macro (integer offset).
+ * The correctness of the offset with respect to the node type is checked in
+ * LIST_INIT(), which requires the name of the struct node member in the node
+ * type (usually 'n') as an argument.
+ *
+ * - Anonymous structure types produced by LIST*() macros are considered
+ * different types even when derived with the same arguments (node type,
+ * offset). This makes it more complicated to pass a pointer to list head
+ * structure. This can be worked around by using MEMBER_TYPE() to refer to
+ * the original list head, or by explicitly defining the derived list type.
+ */
+
+#define LIST(type)		LIST_(type, 0)
+#define LIST2(type, pos)	LIST_(type, offsetof(type, pos))
+#define LIST_(type, off)	struct { list list; type *node[0]; char offset[0][off]; }
+#define LIST_TYPE(l)		typeof(*(l).node[0])
+#define LIST_OFFSET(l)		sizeof(typeof((l).offset[0]))
+
+#define LIST_IN(l)		(&(l).list)
+#define NODE_IN(l, n)		({ TYPE_CHECK(LIST_TYPE(l) *, n); (node *) ((char *) (n) + LIST_OFFSET(l)); })
+#define NODE_OUT(l, n)		({ TYPE_CHECK(node *, n); (LIST_TYPE(l) *) ((char *) (n) - LIST_OFFSET(l)); })
+
+
+#define LIST_INIT(l, pos)						\
+  ({									\
+    STATIC_ASSERT(TYPE_EQUAL(MEMBER_TYPE(LIST_TYPE(l), pos), node));	\
+    STATIC_ASSERT(LIST_OFFSET(l) == offsetof(LIST_TYPE(l), pos));	\
+    init_list(LIST_IN(l));						\
+  })
+
+#define LIST_APPEND(l, n)		add_tail(LIST_IN(l), NODE_IN(l, n))
+#define LIST_PREPEND(l, n)		add_head(LIST_IN(l), NODE_IN(l, n))
+#define LIST_INSERT(l, n, after)	insert_node(NODE_IN(l, n), NODE_IN(l, after))
+#define LIST_REMOVE(l, n)		rem_node(NODE_IN(l, n))
+#define LIST_LENGTH(l)			list_length(LIST_IN(l))
+#define LIST_EMPTY(l)			(!(l).list.head->next)
+
+#define LIST_EXTEND(l1, l2)				     		\
+  ({									\
+    STATIC_ASSERT(TYPE_EQUAL(LIST_TYPE(l1), LIST_TYPE(l2)));		\
+    add_tail_list(LIST_IN(l1), LIST_IN(l2));				\
+  })
+
+
+#define LIST_FIRST(l) \
+  ({ node *_nn = (l).list.head; _nn->next ? NODE_OUT(l, _nn) : NULL; })
+
+#define LIST_NEXT(l, n) \
+  ({ node *_nn = NODE_IN(l, n)->next; _nn->next ? NODE_OUT(l, _nn) : NULL; })
+
+#define LIST_LAST(l) \
+  ({ node *_nn = (l).list.tail; _nn->prev ? NODE_OUT(l, _nn) : NULL; })
+
+#define LIST_PREV(l, n) \
+  ({ node *_nn = NODE_IN(l, n)->prev; _nn->prev ? NODE_OUT(l, _nn) : NULL; })
+
+
+#define LIST_WALK_(l, n) \
+  for(node *_nn=(l).list.head; _nn->next && (n = NODE_OUT(l, _nn)); _nn=_nn->next)
+
+#define LIST_WALK_DELSAFE_(l, n) \
+  for(node *_nn=(l).list.head; _nn->next && (n = NODE_OUT(l, _nn)) && (_nn=_nn->next, 1); )
+
+#define LIST_WALK_FIRST_(l, n) \
+  for(node *_nn=(l).list.head; _nn->next && (n = NODE_OUT(l, _nn)); _nn=(l).list.head)
+
+#define LIST_WALK_REVERSE_(l, n) \
+  for(node *_nn=(l).list.tail; _nn->prev && (n = NODE_OUT(l, _nn)); _nn=_nn->prev)
+
+#define LIST_WALK_REVERSE_DELSAFE_(l, n) \
+  for(node *_nn=(l).list.tail; _nn->prev && (n = NODE_OUT(l, _nn)) && (_nn=_nn->prev, 1); )
+
+
+#define LIST_WALK(l, n) \
+  WITH(LIST_TYPE(l) *, n, NULL) LIST_WALK_(l, n)
+
+#define LIST_WALK_DELSAFE(l, n) \
+  WITH(LIST_TYPE(l) *, n, NULL) LIST_WALK_DELSAFE_(l, n)
+
+#define LIST_WALK_FIRST(l, n) \
+  WITH(LIST_TYPE(l) *, n, NULL) LIST_WALK_FIRST_(l, n)
+
+#define LIST_WALK_REVERSE(l, n) \
+  WITH(LIST_TYPE(l) *, n, NULL) LIST_WALK_REVERSE_(l, n)
+
+#define LIST_WALK_REVERSE_DELSAFE(l, n) \
+  WITH(LIST_TYPE(l) *, n, NULL) LIST_WALK_REVERSE_DELSAFE_(l, n)
+
+
+/*
+ * These STATELESS macros do not have internal state variable,
+ * can be suspended and resumed as long as node stays in list.
+ */
+
+#define LIST_WALK_STATELESS(l, n) \
+  for (n = LIST_FIRST(l); n; n = LIST_NEXT(l, n))
+
+#define LIST_WALK_REVERSE_STATELESS(l, n) \
+  for (n = LIST_LAST(l); n; n = LIST_PREV(l, n))
+
+
 #endif
