@@ -975,9 +975,9 @@ bgp_close_conn(struct bgp_conn *conn)
   conn->local_open_length = 0;
   conn->remote_open_length = 0;
 
-  mb_free(conn->local_caps);
+  bgp_free_capabilities(conn->local_caps);
   conn->local_caps = NULL;
-  mb_free(conn->remote_caps);
+  bgp_free_capabilities(conn->remote_caps);
   conn->remote_caps = NULL;
 
   mb_free(conn->notify_data);

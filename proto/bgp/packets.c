@@ -244,6 +244,16 @@ bgp_alloc_capabilities(struct bgp_proto *p, int n)
 }
 
 void
+bgp_free_capabilities(struct bgp_caps *caps)
+{
+  if (!caps)
+    return;
+
+  mb_free((void *) caps->hostname);
+  mb_free(caps);
+}
+
+void
 bgp_prepare_capabilities(struct bgp_conn *conn)
 {
   struct bgp_proto *p = conn->bgp;
@@ -664,6 +674,7 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
         if (hostname[i] < ' ')
           hostname[i] = ' ';
 
+      mb_free((void *) caps->hostname);
       caps->hostname = hostname;
 
       /* We can safely ignore all other capabilities */
@@ -689,7 +700,7 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
   return 0;
 
 err:
-  mb_free(caps);
+  bgp_free_capabilities(caps);
   bgp_error(conn, 2, err_subcode, NULL, 0);
   return -1;
 }
