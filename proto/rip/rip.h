@@ -47,7 +47,7 @@
 struct rip_config
 {
   struct proto_config c;
-  list patt_list;			/* List of iface configs (struct rip_iface_config) */
+  LIST(struct rip_iface_config) patt_list;	/* List of iface configs */
 
   u8 rip2;				/* RIPv2 (IPv4) or RIPng (IPv6) */
   u8 ecmp;				/* Maximum number of nexthops in ECMP route, or 0 */
@@ -91,7 +91,7 @@ struct rip_proto
 {
   struct proto p;
   struct fib rtable;			/* Internal routing table */
-  list iface_list;			/* List of interfaces (struct rip_iface) */
+  LIST(struct rip_iface) iface_list;	/* List of interfaces */
   SLAB(struct rip_rte) rte_slab;	/* Slab for internal routes */
   timer *timer;				/* Main protocol timer */
 
@@ -121,7 +121,7 @@ struct rip_iface
   u16 tx_plen;				/* Max TX packet data length */
   u32 csn;				/* Last used crypto sequence number */
   ip_addr addr;				/* Destination multicast/broadcast address */
-  list neigh_list;			/* List of iface neighbors (struct rip_neighbor) */
+  LIST(struct rip_neighbor) neigh_list;	/* List of iface neighbors */
 
   /* Update scheduling */
   btime next_regular;			/* Next time when regular update should be called */
