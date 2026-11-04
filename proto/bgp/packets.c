@@ -167,7 +167,7 @@ bgp_create_notification(struct bgp_conn *conn, byte *buf)
   BGP_TRACE(D_PACKETS, "Sending NOTIFICATION(code=%d.%d)", conn->notify_code, conn->notify_subcode);
   buf[0] = conn->notify_code;
   buf[1] = conn->notify_subcode;
-  memcpy(buf+2, conn->notify_data, conn->notify_size);
+  bmemcpy(buf+2, conn->notify_data, conn->notify_size);
   return buf + 2 + conn->notify_size;
 }
 
@@ -3929,6 +3929,7 @@ bgp_rx_notification(struct bgp_conn *conn, byte *pkt, uint len)
   bgp_log_error(p, BE_BGP_RX, "Received", code, subcode, pkt+21, len-21);
   bgp_store_error(p, conn, BE_BGP_RX, (code << 16) | subcode);
 
+  /* Just pass is synchronously to bgp_conn_leave_established_state() */
   conn->notify_code = code;
   conn->notify_subcode = subcode;
   conn->notify_data = pkt+21;
@@ -3936,6 +3937,9 @@ bgp_rx_notification(struct bgp_conn *conn, byte *pkt, uint len)
 
   bgp_conn_enter_close_state(conn);
   bgp_schedule_packet(conn, NULL, PKT_SCHEDULE_CLOSE);
+
+  conn->notify_data = NULL;
+  conn->notify_size = 0;
 
   if (err)
   {
