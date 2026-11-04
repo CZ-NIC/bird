@@ -520,8 +520,7 @@ ospf_rx_hook(sock *sk, uint len)
     if ((p->areano == 1) || !oa_is_ext(ifa->oa))
       return 1;
 
-    struct ospf_iface *iff = NULL;
-    WALK_LIST(iff, p->iface_list)
+    LIST_WALK(p->iface_list, iff)
     {
       if ((iff->type == OSPF_IT_VLINK) &&
 	  (iff->voa == ifa->oa) &&
@@ -701,9 +700,7 @@ ospf_send_to_designated(struct ospf_iface *ifa)
 static void
 ospf_send_to_adjacent(struct ospf_iface *ifa)
 {
-  struct ospf_neighbor *n;
-
-  WALK_LIST(n, ifa->neigh_list)
+  LIST_WALK(ifa->neigh_list, n)
     if (n->state >= NEIGHBOR_EXCHANGE)
       ospf_send_to(ifa, n->ip);
 }
