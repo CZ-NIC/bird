@@ -770,6 +770,7 @@ bgp_total_aigp_metric(rte *r)
 
 void bgp_dump_state_change(struct bgp_conn *conn, uint old, uint new);
 void bgp_prepare_capabilities(struct bgp_conn *conn);
+void bgp_free_capabilities(struct bgp_caps *caps);
 int bgp_check_capabilities(struct bgp_conn *conn);
 const struct bgp_af_desc *bgp_get_af_desc(u32 afi);
 const struct bgp_af_caps *bgp_find_af_caps(struct bgp_caps *caps, u32 afi);
