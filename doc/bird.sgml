@@ -7102,7 +7102,7 @@ options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 	interface must be attached to nexthop IP address using link-local-scope
 	format (e.g. <cf/192.0.2.1%eth0/). Default value is no.
 
-	<tag><label id="static-route-weight">weight <m/switch/</tag>
+	<tag><label id="static-route-weight">weight <m/num/</tag>
 	For multipath routes, this value specifies a relative weight of the
 	nexthop. Allowed values are 1-256. Default value is 1.
 </descrip>
