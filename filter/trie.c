@@ -1082,9 +1082,10 @@ trie_node_format(const struct f_trie_node *n, buffer *buf, int v4)
   }
 
   int nlen = v4 ? n->v4.plen : n->v6.plen;
+  int max_len = v4 ? IP4_MAX_PREFIX_LENGTH : IP6_MAX_PREFIX_LENGTH;
   uint local = v4 ? n->v4.local : n->v6.local;
 
-  for (int i = (nlen ? 0 : 1); i < TRIE_STEP; i++)
+  for (int i = (nlen ? 0 : 1); (i < TRIE_STEP) && (nlen + i <= max_len); i++)
     if (GET_ACCEPT_BIT(n, v4, nlen + i - 1))
       local &= ~trie_level_mask(1, i);
 
