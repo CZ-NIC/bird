@@ -169,7 +169,7 @@ bgp_create_notification(struct bgp_conn *conn, byte *buf)
   BGP_TRACE(D_PACKETS, "Sending NOTIFICATION(code=%d.%d)", conn->notify_code, conn->notify_subcode);
   buf[0] = conn->notify_code;
   buf[1] = conn->notify_subcode;
-  memcpy(buf+2, conn->notify_data, conn->notify_size);
+  bmemcpy(buf+2, conn->notify_data, conn->notify_size);
   return buf + 2 + conn->notify_size;
 }
 
@@ -243,6 +243,16 @@ bgp_alloc_capabilities(struct bgp_proto *p, int n)
   struct bgp_caps *caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps) + n * sizeof(struct bgp_af_caps));
   caps->role = BGP_ROLE_UNDEFINED;
   return caps;
+}
+
+void
+bgp_free_capabilities(struct bgp_caps *caps)
+{
+  if (!caps)
+    return;
+
+  mb_free((void *) caps->hostname);
+  mb_free(caps);
 }
 
 void
@@ -666,6 +676,7 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
         if (hostname[i] < ' ')
           hostname[i] = ' ';
 
+      mb_free((void *) caps->hostname);
       caps->hostname = hostname;
 
       /* We can safely ignore all other capabilities */
@@ -691,7 +702,7 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
   return 0;
 
 err:
-  mb_free(caps);
+  bgp_free_capabilities(caps);
   bgp_error(conn, 2, err_subcode, NULL, 0);
   return -1;
 }
@@ -905,7 +916,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   { bgp_error(conn, 1, 2, pkt+16, 2); return; }
 
   if (pkt[19] != BGP_VERSION)
-  { u16 val = BGP_VERSION; bgp_error(conn, 2, 1, (byte *) &val, 2); return; }
+  { u16 val = htons(BGP_VERSION); bgp_error(conn, 2, 1, (byte *) &val, 2); return; }
 
   asn = get_u16(pkt+20);
   hold = get_u16(pkt+22);
@@ -3957,6 +3968,7 @@ bgp_rx_notification(struct bgp_conn *conn, byte *pkt, uint len)
   bgp_log_error(p, BE_BGP_RX, "Received", code, subcode, pkt+21, len-21);
   bgp_store_error(p, conn, BE_BGP_RX, (code << 16) | subcode);
 
+  /* Just pass is synchronously to bgp_conn_leave_established_state() */
   conn->notify_code = code;
   conn->notify_subcode = subcode;
   conn->notify_data = pkt+21;
@@ -3964,6 +3976,9 @@ bgp_rx_notification(struct bgp_conn *conn, byte *pkt, uint len)
 
   bgp_conn_enter_close_state(conn);
   bgp_schedule_packet(conn, NULL, PKT_SCHEDULE_CLOSE);
+
+  conn->notify_data = NULL;
+  conn->notify_size = 0;
 
   if (err)
   {

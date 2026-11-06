@@ -1137,11 +1137,12 @@ bgp_close_conn(struct bgp_conn *conn)
 
   proto_announce_state_later(&conn->bgp->p, pes);
 
-  mb_free(conn->local_caps);
+  bgp_free_capabilities(conn->local_caps);
   conn->local_caps = NULL;
-  mb_free(conn->remote_caps);
+  bgp_free_capabilities(conn->remote_caps);
   conn->remote_caps = NULL;
 
+  mb_free(conn->notify_data);
   conn->notify_data = NULL;
   conn->notify_size = 0;
 }
@@ -3500,7 +3501,7 @@ bgp_postconfig(struct proto_config *CF)
   if (cf->keepalive_time > (cf->hold_time / 2))
     log(L_WARN "Keepalive time should be at most 1/2 of hold time");
 
-  if ((cf->send_hold_time > 0) && (cf->send_hold_time < cf->hold_time))
+  if ((cf->send_hold_time > 0) && ((uint) cf->send_hold_time < cf->hold_time))
     cf_error("Send hold time must be zero or at least hold time");
 
   if (cf->min_hold_time > cf->hold_time)
@@ -3890,8 +3891,14 @@ bgp_error(struct bgp_conn *c, uint code, uint subcode, byte *data, int len)
 
   c->notify_code = code;
   c->notify_subcode = subcode;
-  c->notify_data = data;
-  c->notify_size = (len > 0) ? len : 0;
+  c->notify_data = NULL;
+  c->notify_size = 0;
+
+  if (len > 0)
+  {
+    c->notify_data = memcpy(mb_alloc(p->p.pool, len), data, len);
+    c->notify_size = len;
+  }
 
   bgp_conn_enter_close_state(c);
   bgp_schedule_packet(c, NULL, PKT_NOTIFICATION);
