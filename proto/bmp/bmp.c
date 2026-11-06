@@ -193,7 +193,7 @@ static inline void
 bmp_put_data(buffer *b, const void *src, const size_t len)
 {
   ASSERT_DIE(b->pos + len <= b->end);
-  memcpy(b->pos, src, len);
+  bmemcpy(b->pos, src, len);
   b->pos += len;
 }
 
