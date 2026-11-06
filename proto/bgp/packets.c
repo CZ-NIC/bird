@@ -914,7 +914,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   { bgp_error(conn, 1, 2, pkt+16, 2); return; }
 
   if (pkt[19] != BGP_VERSION)
-  { u16 val = BGP_VERSION; bgp_error(conn, 2, 1, (byte *) &val, 2); return; }
+  { u16 val = htons(BGP_VERSION); bgp_error(conn, 2, 1, (byte *) &val, 2); return; }
 
   asn = get_u16(pkt+20);
   hold = get_u16(pkt+22);
