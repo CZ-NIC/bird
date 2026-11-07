@@ -1235,11 +1235,12 @@ ea_list_copy(ea_list *n, ea_list *o, uint elen)
       eattr *a = &n->attrs[i];
       if (!a->undef && !(a->type & EAF_EMBEDDED))
 	{
-	  unsigned size = ADATA_SIZE(a->u.ptr->length);
+	  uint size_u = sizeof(struct adata) + a->u.ptr->length;
+	  uint size = ADATA_SIZE(a->u.ptr->length);
 	  ASSERT_DIE(adpos + size <= elen);
 
 	  struct adata *d = ((void *) n) + adpos;
-	  memcpy(d, a->u.ptr, size);
+	  memcpy(d, a->u.ptr, size_u);
 	  a->u.ptr = d;
 
 	  adpos += size;
