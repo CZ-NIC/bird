@@ -858,8 +858,11 @@ radv_copy_config(struct proto_config *dest, struct proto_config *src)
   /* We clean up patt_list, ifaces are non-sharable */
   init_list(&d->patt_list);
 
-  /* We copy pref_list, shallow copy suffices */
+  /* We copy remaining lists, shallow copy suffices */
   cfg_copy_list(&d->pref_list, &s->pref_list, sizeof(struct radv_prefix_config));
+  cfg_copy_list(&d->rdnss_list, &s->rdnss_list, sizeof(struct radv_rdnss_config));
+  cfg_copy_list(&d->dnssl_list, &s->dnssl_list, sizeof(struct radv_dnssl_config));
+  cfg_copy_list(&d->custom_list, &s->custom_list, sizeof(struct radv_custom_config));
 }
 
 void
