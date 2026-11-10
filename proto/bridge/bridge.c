@@ -437,17 +437,21 @@ kbr_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *n, rte 
   rte *new_gw = (nnhad && NEXTHOP_IS_REACHABLE(nnhad) && ipa_nonzero(nnhad->nh.gw)) ? new : NULL;
   const rte *old_gw = (onhad && NEXTHOP_IS_REACHABLE(onhad) && ipa_nonzero(onhad->nh.gw)) ? old : NULL;
 
-  /* For regular routes, we have one bridge entry, perhaps also one tunnel entry.
-   * For BUM routes, we have multiple tunnel entries, but no bridge entry
-   **/
-  if (!mac_zero(net_mac_addr(n)))
+  if (mac_zero(net_mac_addr(n)))
   {
+    /* For BUM routes, we have multiple tunnel entries, but no bridge entry */
+    kbr_trace_out(p, n, new_gw, old_gw, 1);
+    kbr_update_fdb(p, n, new_gw, old_gw, 1);
+  }
+  else
+  {
+    /* For regular routes, we have one bridge entry, perhaps also one tunnel entry */
     kbr_trace_out(p, n, new, old, 0);
     kbr_replace_fdb(p, n, new, old, 0);
-  }
 
-  kbr_trace_out(p, n, new_gw, old_gw, 1);
-  kbr_replace_fdb(p, n, new_gw, old_gw, 1);
+    kbr_trace_out(p, n, new_gw, old_gw, 1);
+    kbr_replace_fdb(p, n, new_gw, old_gw, 1);
+  }
 }
 
 static void
