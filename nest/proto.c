@@ -1680,6 +1680,12 @@ proto_init(struct proto_config *c, struct proto *after)
 static void
 proto_start(struct proto *p)
 {
+  if (p->reconfiguring == PC_CLEANUP)
+  {
+    PD(p, "Waiting for cleanup, not starting");
+    return;
+  }
+
   DBG("Kicking %s up\n", p->name);
   PD(p, "Starting");
 
@@ -2164,7 +2170,10 @@ proto_rethink_goal(struct proto *p)
   ASSERT_DIE(birdloop_inside(p->loop));
 
   if (p->reconfiguring == PC_CLEANUP)
-    bug("%s: Requested rethink_goal while already cleaning up", p->name);
+  {
+    log(L_WARN "%s: Requested rethink_goal while already cleaning up", p->name);
+    return;
+  }
 
   switch (p->proto_state)
   {
@@ -2179,9 +2188,9 @@ proto_rethink_goal(struct proto *p)
       {
 	p->reconfiguring = PC_CLEANUP;
 
-	/* Protocol is expected to get removed */
+	/* Protocol must be cleaned up from its primary thread */
 	if (p->loop == &main_birdloop)
-	  proto_cleanup(p);
+	  ev_schedule(ev_new_init(p->persistent_pool, proto_loop_stopped, p));
 	else
 	  birdloop_stop_self(p->loop, proto_loop_stopped, p);
       }
