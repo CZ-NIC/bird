@@ -259,6 +259,10 @@ bgp_socket_match(const struct bgp_socket_params *a, const struct bgp_socket_para
 static void
 bgp_listen_register(struct bgp_proto *p, struct bgp_listen_request *req)
 {
+  /* No request actually */
+  if (!req)
+    return;
+
   ASSERT_DIE(!NODE_VALID(&req->pn));
   ASSERT_DIE(!NODE_VALID(&req->sn));
 
