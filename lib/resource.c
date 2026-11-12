@@ -393,8 +393,10 @@ struct mblock {
   byte data[0];
 };
 
-static void mbl_free(resource *r UNUSED)
+static void mbl_free(resource *r)
 {
+  struct mblock *b = SKIP_BACK(struct mblock, r, r);
+  memset(b->data, POISON_MB_FREE, b->size);
 }
 
 static void mbl_debug(struct dump_request *dreq, resource *r)
@@ -525,7 +527,6 @@ mb_free(void *m)
     return;
 
   SKIP_BACK_DECLARE(struct mblock, b, data[0], (byte *) m);
-  memset(m, POISON_MB_FREE, b->size);
   rfree(&b->r);
 }
 
