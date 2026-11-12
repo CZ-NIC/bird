@@ -974,7 +974,7 @@ ea_do_prune(ea_list *e)
   for (ea_list *u = e->next; u; u = u->next)
     ulc++;
 
-  struct { eattr *cur, *end; } uls[ulc];
+  struct { eattr *cur, *end; } uls[ulc ?: 1];
   {
     ea_list *u = e->next;
     for (uint i = 0; i < ulc; i++)
