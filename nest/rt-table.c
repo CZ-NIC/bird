@@ -2998,7 +2998,7 @@ static struct rt_export_feed *
 rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struct bmap *seen, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
 {
   RT_READ_ANCHORED(SKIP_BACK(rtable, export_all, e), tr, u);
-  return rt_net_feed_internal(tr, index, seen, prefilter, f, SKIP_BACK(const struct rt_pending_export, it, _first));
+  return rt_net_feed_internal(tr, index, seen, prefilter, f, _first ? SKIP_BACK(const struct rt_pending_export, it, _first) : NULL);
 }
 
 static rte
@@ -3033,7 +3033,7 @@ static struct rt_export_feed *
 rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struct bmap *seen, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
 {
   SKIP_BACK_DECLARE(rtable, t, export_best, e);
-  SKIP_BACK_DECLARE(const struct rt_pending_export, first, it, _first);
+  const struct rt_pending_export *first = _first ? SKIP_BACK(const struct rt_pending_export, it, _first) : NULL;
 
   RT_READ_ANCHORED(t, tr, u);
 
