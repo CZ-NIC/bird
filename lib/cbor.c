@@ -283,7 +283,12 @@ cbor_parse_byte(struct cbor_parser_context *ctx, const byte bp)
       ctx->type = (enum cbor_basic_type) bp >> 5;
       ctx->value = bp & 0x1f;
 
-      if (ctx->type == 7)
+      if (!ctx->stack_countdown[ctx->stack_pos])
+	return CPR_ERROR;
+
+      ctx->stack_countdown[ctx->stack_pos]--;
+
+      if (ctx->type == CBOR_SPECIAL)
       {
 	if (ctx->value < 20)
 	  CBOR_PARSER_ERROR("Unknown simple value %u", ctx->value);
@@ -314,7 +319,8 @@ cbor_parse_byte(struct cbor_parser_context *ctx, const byte bp)
 	  ctx->value = 0;
 	  break;
 	}
-	else if ((ctx->value == 31) && (ctx->type >= 2) && (ctx->type <= 5))
+	/* CBOR_BYTES CBOR_TEXT CBOR_ARRAY CBOR_MAP */
+	else if ((ctx->value == 31) && (ctx->type >= CBOR_BYTES) && (ctx->type <= CBOR_MAP))
 	  /* Indefinite length, fall through */
 	  ctx->tflags |= CPT_VARLEN;
 	else
@@ -345,18 +351,10 @@ cbor_parse_byte(struct cbor_parser_context *ctx, const byte bp)
 
 	case CBOR_BYTES:
 	case CBOR_TEXT:
-	  /* TODO indef byte and text strings */
 	  ctx->partial_state = CPE_READ_BYTE;
-	  //ctx->partial_countdown = ctx->value;
-	  if (++ctx->stack_pos > ctx->stack_max)
-	    CBOR_PARSER_ERROR("Stack too deep");
-
-	  /* set byte/text string size;
-	   * ~0 for indefinite, plus one for the array/map head itself */
 	  if (ctx->tflags & CPT_VARLEN)
 	    bug("indef byte/text strings not implemented");
-	  ctx->stack_countdown[ctx->stack_pos] = (ctx->tflags & CPT_VARLEN) ? ~0ULL : ctx->value;
-	  //ctx->partial_state = (ctx->tflags & CPT_VARLEN) ? CPE_READ_CHUNKED : CPE_READ_BYTE;
+	  ctx->partial_countdown = ctx->value;
 	  break;
 
 	case CBOR_ARRAY:
@@ -380,19 +378,21 @@ cbor_parse_byte(struct cbor_parser_context *ctx, const byte bp)
       return CPR_MAJOR;
 
     case CPE_READ_BYTE:
-      if (!ctx->stack_countdown[ctx->stack_pos])
+      if (!ctx->partial_countdown)
       {
 	ctx->target_buf = NULL;
-	ctx->partial_state = CPE_ITEM_DONE;
+	/* Byte strings and text strings are not considered a block item */
+	ctx->partial_state = CPE_TYPE;
 	return CPR_STR_END;
       }
 
       *ctx->target_buf = bp;
       ctx->target_buf++;
-      if (!--ctx->stack_countdown[ctx->stack_pos])
+      if (!--ctx->partial_countdown)
       {
 	ctx->target_buf = NULL;
-	ctx->partial_state = CPE_ITEM_DONE;
+	/* Byte strings and text strings are not considered a block item */
+	ctx->partial_state = CPE_TYPE;
 	return CPR_STR_END;
       }
 
@@ -409,10 +409,11 @@ cbor_parse_byte(struct cbor_parser_context *ctx, const byte bp)
 bool
 cbor_parse_block_end(struct cbor_parser_context *ctx)
 {
-  if (ctx->partial_state != CPE_ITEM_DONE)
+  if (ctx->partial_state != CPE_ITEM_DONE &&
+      (ctx->partial_state != CPE_TYPE && !ctx->stack_countdown))
     return false;
 
-  if (--ctx->stack_countdown[ctx->stack_pos])
+  if (ctx->stack_countdown[ctx->stack_pos])
   {
     ctx->partial_state = CPE_TYPE;
     return false;
@@ -420,10 +421,11 @@ cbor_parse_block_end(struct cbor_parser_context *ctx)
 
   if (!--ctx->stack_pos)
     ctx->partial_state = CPE_EXIT;
+  else
+    ctx->partial_state = CPE_TYPE;
 
   return true;
 }
-
 
 #if 0
 

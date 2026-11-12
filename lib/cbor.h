@@ -160,11 +160,11 @@ struct cbor_parser_context {
 
   enum {			/* Multi-byte reader */
     CPE_TYPE = 0,
-    CPE_READ_INT,
-    CPE_COMPLETE_INT,
+    CPE_READ_INT, // 1
+    CPE_COMPLETE_INT, // 2
     //CPE_READ_CHUNKED,
-    CPE_READ_BYTE,
-    CPE_ITEM_DONE,
+    CPE_READ_BYTE, // 3
+    CPE_ITEM_DONE, // 4
     CPE_EXIT,
   } partial_state;
 
