@@ -1704,8 +1704,8 @@ cmd_show_threads_done(struct bird_thread_syncer *sync)
   /* The client lost their patience and dropped the session early. */
   if (!tsd->cli->sock)
   {
-    mb_free(tsd);
     rp_free(tsd->cli->pool);
+    mb_free(tsd);
     return;
   }
 
