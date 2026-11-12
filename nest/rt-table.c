@@ -3082,7 +3082,10 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struc
     feed->ni = NET_TO_INDEX(best->rte.net);
   }
   else
+  {
+    ASSERT_DIE(first);
     feed->ni = NET_TO_INDEX((first->it.new ?: first->it.old)->net);
+  }
 
   if (ecnt)
   {
