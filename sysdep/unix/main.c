@@ -548,7 +548,12 @@ cli_err(sock *s, int err)
 	log(L_INFO "CLI connection closed");
     }
 
-  cli_free(s->data);
+  /* Close the socket side but this function is not called from a clean context.
+   * The rest of the CLI will be cleaned up from its own event. */
+  struct cli *cli = s->data;
+  sk_close(cli->sock);
+  cli->sock = NULL;
+  ev_schedule(cli->event);
 }
 
 static void
