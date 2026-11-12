@@ -279,6 +279,9 @@ cli_event(void *data)
   cli *c = data;
   int err;
 
+  if (!c->sock)
+    return cli_free(c);
+
   if (c->tx_pos)
     ;
   else if (c->cont)
@@ -379,7 +382,7 @@ cli_free(cli *c)
 
   if (done)
     rp_free(c->pool);
-  else
+  else if (c->sock)
   {
     sk_close(c->sock);
     c->sock = NULL;
