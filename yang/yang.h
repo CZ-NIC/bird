@@ -17,6 +17,10 @@
 #include "lib/coap.h"
 #include "nest/locks.h"
 
+#include "yang/model.h"
+
+#include "yang/coreconf_model.h"
+
 /* YANG Model Selection */
 enum yang_model {
   YANG_MODEL_CLI = 1,		/* Use BIRD CLI 1:1 model */
@@ -30,6 +34,7 @@ enum coreconf_state {
    CC_CREATE_SUBSCRIPTION,
    CC_OP,
    CC_RPC_ACTION,
+   CC_RPC_ACTION_BODY,
    CC_DONE,
    CC_ERROR,
 };
@@ -52,13 +57,14 @@ struct yang_session {
   struct coap_session coap;
   struct cbor_parser_context *cbor;
   struct cbor_writer cbor_writer;
+  struct cbor_writer_stack_item _writer_stack[64];
   struct coap_tx_opt_fixed {
     u32 len;
     enum coap_option_id type;
     char buf[2048];
   } cbor_b;
-  //char *write_buffer;
-  //uint write_buff_len;
+  char *write_buffer;
+  uint write_buffer_len;
   bool error_sent;
   const struct yang_url_node **url;
   bool (*endpoint)(struct yang_session *);
@@ -76,10 +82,19 @@ struct yang_session {
   enum resource_type resource_type;
   enum resource_type core_query; // used as storage for ? queries on /.well-known/core
   bool core_report_all; // we report full /.well-known/core for unknown queries
+
+  // BEWARE that parsing value inside identifiers is tricky and
+  // may require to creation of cfg struct for isolated environment
   linpool *parse_stack;
   linpool *gen_stack;
-
-  struct uytc_rpc_data *rpc;
+  linpool *coro_stack;
+  linpool *yid_stack;
+  linpool *return_stack;
+  void *current_coro;
+  //struct uytc_rpc_data *rpc2;
+  struct rpc_data_light_t *rpc;
+  bool coreconf_processing;
+  char tmp_buf[256];
 };
 
 /* YANG socket parameters */
@@ -192,7 +207,6 @@ enum yang_proc_state yang_common_coap_endpoint(struct yang_session *se);
 enum uytc_rpc_state {
   RPC_BEGIN,
   RPC_ID,
-  RPC_BODY,
   RPC_PARSING,
   RPC_PROC,
   RPC_GEN,
@@ -234,7 +248,17 @@ struct rpc_show_status {
 struct rpc_show_status_out {
   struct rpc_show_status status;
   char *curr;
+  //char *end;
   char data[2048];
+};
+
+struct rpc_load_config {
+  enum show_status_state state;
+  char filename[1024];
+};
+
+struct rpc_load_config_out {
+  enum show_status_state state;
 };
 
 extern pool *yang_pool;

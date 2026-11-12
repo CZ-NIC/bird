@@ -251,6 +251,8 @@ yang_model_cli_cbor_c(struct yang_session *se)
 
     switch (cbor_parse_byte(se->cbor, payload[i]))
     {
+      case CPR_STR_BUF_END:
+	bug("CPR_STR_BUF_END: No string in here");
       case CPR_ERROR:
 	return yang_cbor_parser_error(se, i, se->cbor->error);
 
@@ -1094,7 +1096,7 @@ yang_session_rx(sock *sk, uint size)
     log(L_TRACE "yang_session_rx: flushed");
 
     /* Next parser step */
-    if (!coap_tcp_parse(&se->coap))
+    if (!coap_tcp_parse(&se->coap) && !se->coreconf_processing)
     {
       log(L_TRACE "yang_session_rx: no parse step");
       return 1;
@@ -1169,6 +1171,8 @@ yang_socket_accept(sock *sk, uint size UNUSED)
 
   coap_session_init(&se->coap);
   se->cbor = cbor_parser_new(api->pool, 16);
+  //(void) cbor_writer_init(&se->cbor_writer, ARRAY_SIZE(se->_writer_stack),
+  //		  se->cbor_b.buf, ARRAY_SIZE(se->cbor_b.buf));
 
   sk->rx_hook = yang_session_rx;
   sk->tx_hook = yang_session_tx;
