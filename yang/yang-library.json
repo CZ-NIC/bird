@@ -1,0 +1,19 @@
+{
+  "ietf-yang-library:modules-state": {
+    "module-set-id": "0",
+    "module": [
+      {
+	"name": "bird",
+	"revision": "2026-02-10",
+	"namespace": "https://bird.nic.cz/yang/v2.18/",
+	"conformance-type": "implement"
+      },
+      {
+	"name": "ietf-yang-types",
+	"revision": "2025-12-22",
+	"namespace": "urn:ietf:params:xml:ns:yang:ietf-yang-types",
+	"conformance-type": "import"
+      }
+    ]
+  }
+}
