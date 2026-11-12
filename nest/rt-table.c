@@ -4734,11 +4734,9 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
   if (!mod)
     return;
 
-  /* We add a spinlock sentinel to the beginning */
-  struct rte_storage local_sentinel = {
-    .flags = REF_OBSOLETE,
-    .next = old_best,
-  };
+  /* We add a spinlock sentinel to the beginning, as in rte_recalculate(). */
+  _Thread_local static struct rte_storage local_sentinel = { .flags = REF_OBSOLETE, };
+  atomic_store_explicit(&local_sentinel.next, old_best, memory_order_release);
   atomic_store_explicit(&n->routes, &local_sentinel, memory_order_release);
 
   /* Now we mark all the old routes obsolete */
