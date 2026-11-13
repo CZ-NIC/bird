@@ -2170,6 +2170,10 @@ proto_cleanup(struct proto *p)
   proto_rem_node(&global_proto_list, p);
   PD(p, "Cleaned up");
 
+  /* Trick: Move the protocol structure to the end of the persistent pool
+   * so that other pieces may touch it when freed. This is a hotfix. */
+  mb_rmove(p, p->persistent_pool);
+
   /* Free last remnants of the protocol */
   if (p->loop != &main_birdloop)
   {

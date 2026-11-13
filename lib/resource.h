@@ -89,6 +89,7 @@ static inline pool *resource_parent(resource *r)
 void *mb_alloc(pool *, unsigned size) ALLOC_SIZE(2);
 void *mb_allocz(pool *, unsigned size) ALLOC_SIZE(2);
 void *mb_realloc(void *m, unsigned size) ALLOC_SIZE(2);
+void *mb_rmove(void *m, pool *p);
 void mb_free(void *);
 
 /* Memory pools with linear allocation */

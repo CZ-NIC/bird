@@ -530,6 +530,19 @@ mb_free(void *m)
 }
 
 
+/**
+ * mb_rmove - move a memory block to a different resource pool
+ * @m: memory block
+ * @p: target pool
+ */
+void
+mb_rmove(void *m, pool *p)
+{
+  SKIP_BACK_DECLARE(struct mblock, b, data[0], (byte *) m);
+  rmove(b, p);
+}
+
+
 
 #define STEP_UP(x) ((x) + (x)/2 + 4)
 
