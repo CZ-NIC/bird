@@ -364,6 +364,14 @@ rip_check_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_
     uint auth_len = mac_type_length(pass->alg);
     uint auth_len2 = sizeof(struct rip_auth_tail) + auth_len;
 
+    /* data_len is the new packet length */
+
+    if (data_len < (hdr_len + sizeof(struct rip_block_auth)))
+      DROP("too short", data_len);
+
+    if ((data_len - hdr_len) % RIP_BLOCK_LENGTH)
+      DROP("invalid length", data_len);
+
     /*
      * Ideally, first check should be check for internal consistency:
      *   (data_len + sizeof(struct rip_auth_tail) + auth->auth_len) != *plen
