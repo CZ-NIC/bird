@@ -428,7 +428,7 @@ mbl_memsize(resource *r)
 
 static const struct resclass mb_class = {
   .name = "Memory",
-  .size = 0,
+  .size = sizeof(struct mblock),
   .free = mbl_free,
   .dump = mbl_debug,
   .lookup  = mbl_lookup,
@@ -453,7 +453,7 @@ mb_alloc(pool *p, unsigned size)
 {
   ASSERT_DIE(DG_IS_LOCKED(p->domain));
 
-  struct mblock *b = xmalloc(sizeof(struct mblock) + size);
+  struct mblock *b = xmalloc(mb_class.size + size);
 
   b->r.class = &mb_class;
   b->r.n = (struct resource_node) {};
