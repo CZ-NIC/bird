@@ -719,8 +719,10 @@ msl_cleanup_full_heads(struct mslab *s)
      * */
     u16 num_full = atomic_load_explicit(&this_head->num_full, memory_order_acquire);
 
-    /* Full block, keep it. */
-    if (num_full == s->objs_per_slab)
+    /* Full block, keep it. There may be a transitional state where msl_free()
+     * sleeps just between updating the bitfield and decrementing num_full, which
+     * may cause num_full to be larger than s->objs_per_slab for a while. */
+    if (num_full >= s->objs_per_slab)
     {
       /* Move on to the next head. */
       ASSERT_DIE(MSL_GET_STATE(this_head) == slh_full);
@@ -728,7 +730,6 @@ msl_cleanup_full_heads(struct mslab *s)
       this_head = atomic_load_explicit(this_head_ptr, memory_order_acquire);
       continue;
     }
-    ASSERT_DIE(num_full < s->objs_per_slab);
 
     /* Otherwise, remove the block from the list or retry. */
     struct msl_head *next_head = atomic_load_explicit(&this_head->next, memory_order_acquire);
@@ -741,22 +742,25 @@ msl_cleanup_full_heads(struct mslab *s)
       continue;
     }
 
-    /* Successfully removed */
-    if (num_full == 0)
-    {
-      /* Nobody was seeing this page, we can immediately free the empty page */
-      msl_free_page(this_head);
-      atomic_fetch_add_explicit(&s->freed_heads, 1, memory_order_relaxed);
-    }
-    else
-    {
-      /* We change the head's state to slh_partial to indicate where it is intended to be stored. */
-      MSL_SET_STATE(this_head, slh_full, slh_partial);
 
-      /* Move the head into new_partials */
-      atomic_store_explicit(&this_head->next, new_partials, memory_order_relaxed);
-      new_partials = this_head;
-    }
+    /* We can not free an empty page without synchronize_rcu(), consider this:
+     * - thread 1 tries to pick a head
+     * - thread 2 wins the race, fills the same head to the brim and pushes it into full heads
+     * - thread 3 frees everything from the same head.
+     * That is why we are not going to do that now. Empty pages marked as full will be moved
+     * to partial heads and cleand with next cleanup. When deleting the whole slab,
+     * cleanup is called twice because of that.
+     *
+     * We don't care about cleanup not being called again, it is going to happen at some
+     * time in future, most probably actually not so far.
+     */
+
+    /* We change the head's state to slh_partial to indicate where it is intended to be stored. */
+    MSL_SET_STATE(this_head, slh_full, slh_partial);
+
+    /* Move the head into new_partials */
+    atomic_store_explicit(&this_head->next, new_partials, memory_order_relaxed);
+    new_partials = this_head;
 
     /* Load next head */
     this_head = atomic_load_explicit(this_head_ptr, memory_order_acquire);
@@ -838,16 +842,12 @@ msl_cleanup(void *sp)
 {
   struct mslab *s = (struct mslab*) sp;
 
-  /* We need to flush all readers stuck inside msl_get_partial_head()
-   * so that we can safely exchange the partial_heads pointer. */
-  struct rcu_stored_phase phase = rcu_begin_sync();
-
   /* Get the heads transitioning from full to partial */
   struct msl_head *new_partials = msl_cleanup_full_heads(s);
 
-  /* Wait for stuck readers to end */
-  while (!rcu_end_sync(phase))
-    birdloop_yield();
+  /* We need to flush all readers stuck inside msl_get_partial_head()
+   * so that we can safely exchange the partial_heads pointer. */
+  synchronize_rcu();
 
   /* Exchange the partial heads for the new list.
    * This may collide with (possibly multiple) msl_get_partial_head().
@@ -922,11 +922,19 @@ static void msl_thread_end(struct bird_thread_end_callback *btec)
   uint num_full = atomic_fetch_sub_explicit(&h->num_full, ti->still_free, memory_order_acq_rel);
   if (num_full == ti->still_free)
   {
-    /* The page is empty, just throw it away.
+    /* The page is empty.
      * The |num_full| variable decreases over time but |still_free| is constant
      * at this time because the thread is not allocating anymore. Therefore,
      * if |num_full == still_free|, that's the pre-allocated count,
      * and the page is actually free. */
+
+    /* Someone might still keep pointer to this head 
+     *  - thread 1 tries to pick a head
+     *  - thread 2 wins the race
+     *  - thread 2 ends with empty head
+     * But threads are deleted rarely, we can solve this by one synchronization.
+ */
+    synchronize_rcu();
     msl_free_page(h);
     return;
   }
@@ -965,9 +973,7 @@ static void msl_thread_end(struct bird_thread_end_callback *btec)
 	&s->full_heads, &next, h,
 	memory_order_acq_rel, memory_order_acquire));
 
-  /* And if it actually should be partial, the cleanup will take care */
-  if (num_full - ti->still_free < s->objs_per_slab)
-    ev_send(s->cleanup_ev_list, &s->event_clean);
+  /* We do not care if it needs to be partial, somebody will call cleanup on next free */
 }
 
 
@@ -1004,7 +1010,8 @@ msl_free(void *oo)
 
   u16 num_full_before = atomic_fetch_sub_explicit(&h->num_full, 1, memory_order_acq_rel);
 
-  if ((num_full_before == s->objs_per_slab) || (num_full_before == 1))
+  /* Either returning the first or last object, cleanup needed */
+  if ((num_full_before >= s->objs_per_slab) || (num_full_before == 1))
     ev_send(s->cleanup_ev_list, &s->event_clean);
 
   atomic_fetch_add_explicit(&ti->freed_objs, 1, memory_order_relaxed);
@@ -1023,7 +1030,10 @@ mslab_free(resource *r)
   ev_postpone(&s->event_clean);
 
   /* Run the cleanup in case it was actually needed
-   * Hack: The resource must be inside a  */
+   * It must be called twice because of empty heads in full heads linked list.
+   * Empty heads from full heads are moved to partials in the first walkthrough
+   * and freed in the second one. */
+  msl_cleanup(s);
   msl_cleanup(s);
 
   /* No more thread ends are relevant, we are ending anyway */
