@@ -138,6 +138,11 @@ CF_DECLS
 %left '!'
 %nonassoc '.'
 
+%initial-action
+{
+  f_parse_init();
+}
+
 %start config
 
 CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM, MAX, AS)
