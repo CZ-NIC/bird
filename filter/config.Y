@@ -596,7 +596,7 @@ function_def:
      $7->args = this_function->function->args;
      $7->arg_list = this_function->function->arg_list;
      $7->return_type = this_function->function->return_type;
-     $2->function = $7;
+     this_function->function = $7;
      cf_pop_scope(new_config);
      this_function = NULL;
    }
