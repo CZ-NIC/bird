@@ -176,6 +176,11 @@ CF_DECLS
 %left '!'
 %nonassoc '.'
 
+%initial-action
+{
+  f_parse_init();
+}
+
 %start config
 
 /* See r_args */

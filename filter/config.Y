@@ -72,6 +72,14 @@ static inline void f_method_call_end(void)
   f_method_scope_pos--;
 }
 
+static void
+f_parse_init(void)
+{
+  this_function = NULL;
+  this_for_scope = NULL;
+  f_method_scope_pos = -1;
+}
+
 static int
 f_new_var(struct sym_scope *s)
 {
@@ -629,6 +637,7 @@ function_def:
      $2->function = $7;
      cf_pop_scope(new_config);
      cf_exit_filters();
+     this_function = NULL;
    }
  ;
 
