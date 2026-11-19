@@ -256,11 +256,11 @@ table_start: net_type TABLE symbol {
 
 table_sorted:
    /* empty */
- | SORTED { this_table->sorted = 1; }
+ | SORTED { cf_warn("SORTED is no more supported or needed. (SECONDARY can be used without SORTED.)"); }
  ;
 
 table_opt:
-   SORTED bool { this_table->sorted = $2; }
+   SORTED bool { cf_warn("SORTED is no more supported or needed. (SECONDARY can be used without SORTED.)"); }
  | DEBUG debug_mask { this_table->debug = $2; }
  | TRIE bool {
      if (!net_val_match(this_table->addr_type, NB_IP | NB_VPN | NB_ROA | NB_IP6_SADR))

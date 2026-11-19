@@ -23,7 +23,7 @@
  * type and at least one IP address assigned to it.
  */
 
-#undef LOCAL_DEBUG
+//#undef LOCAL_DEBUG
 
 #include "nest/bird.h"
 #include "nest/iface.h"

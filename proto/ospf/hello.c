@@ -135,12 +135,14 @@ ospf_send_hello(struct ospf_iface *ifa, int kind, struct ospf_neighbor *dirn)
   {
   case OSPF_IT_BCAST:
   case OSPF_IT_PTP:
+    log("send to all");
     ospf_send_to_all(ifa);
     break;
 
   case OSPF_IT_NBMA:
     if (dirn)		/* Response to received hello */
     {
+      log("send to from where received");
       ospf_send_to(ifa, dirn->ip);
       break;
     }

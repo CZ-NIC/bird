@@ -3620,9 +3620,6 @@ bgp_postconfig(struct proto_config *CF)
     if (cf->multihop && (cc->gw_mode == GW_DIRECT))
       cf_error("Multihop BGP cannot use direct gateway mode");
 
-    if ((cc->gw_mode == GW_RECURSIVE) && cc->c.table->sorted)
-      cf_error("BGP in recursive mode prohibits sorted table");
-
     if (cc->require_ext_next_hop && !cc->ext_next_hop)
       cf_warn("Extended next hop required but not enabled");
 

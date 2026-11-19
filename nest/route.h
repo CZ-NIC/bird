@@ -66,7 +66,6 @@ struct rtable_config {
   uint gc_threshold;			/* Maximum number of operations before GC is run */
   uint gc_period;			/* Approximate time between two consecutive GC runs */
   u32 debug;				/* Debugging flags (D_*) */
-  byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte trie_used;			/* Rtable has attached trie */
   struct rt_cork_threshold {
     u64 low, high;

@@ -2628,42 +2628,6 @@ rte_recalculate_best_for_net(rtable *table, net *nets, const struct netindex *ni
   /* This is the ugly part. The tab is locked */
   const rte *best = rte_select_best(rte_for_selection, stored_count);
 
-#if 0
-  if (table->config->sorted)
-  {
-    log("sorted");
-    /* We need to add a spinlock sentinel to the beginning */
-    _Thread_local static struct rte_storage local_sentinel = { .flags = REF_OBSOLETE, };
-
-    // TODO: this will be needed to be locked differently. Or at least I hope so.
-    //atomic_store_explicit(&local_sentinel.next, old_best_stored, memory_order_release);
-    //atomic_store_explicit(&net->routes, &local_sentinel, memory_order_release);
-
-    /* If routes are sorted, just insert new route to appropriate position */
-    if (new)
-    {
-      struct rte_storage * _Atomic *k = &local_sentinel.next, *kk;
-      for (; kk = atomic_load_explicit(k, memory_order_relaxed); k = &kk->next)
-        if ((&kk->rte != old) && rte_better(new, &kk->rte))
-          break;
-
-      /* Do not flip the operation order, the list must stay consistent */
-      //atomic_store_explicit(&new_stored->next, kk, memory_order_release);
-      //atomic_store_explicit(k, new_stored, memory_order_release);
-
-      //if (kk == local_sentinel.next)
-      //{
-      //  atomic_store_explicit(net->best_rte, new_stored->rte, memory_order_release);
-      //  new_best = new_stored;
-      //}
-
-      table->rt_count++;
-    }
-  }
-  else
-  {
-#endif
-
   ASSERT_DIE(!best || best->net->type == table->addr_type);
 
   atomic_store_explicit(&nn->best_rte, best, memory_order_release);
@@ -5208,7 +5172,6 @@ static int
 rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rtable_config *old)
 {
   if ((new->addr_type != old->addr_type) ||
-      (new->sorted != old->sorted) ||
       (new->trie_used != old->trie_used))
     return 0;
 
