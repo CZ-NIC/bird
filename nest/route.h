@@ -66,7 +66,6 @@ struct rtable_config {
   uint gc_threshold;			/* Maximum number of operations before GC is run */
   uint gc_period;			/* Approximate time between two consecutive GC runs */
   u32 debug;				/* Debugging flags (D_*) */
-  byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte trie_used;			/* Rtable has attached trie */
   struct rt_cork_threshold {
     u64 low, high;
@@ -391,6 +390,10 @@ extern uint rtable_max_id;
     callback hcu_cb;			/* Hostcache updater */					\
     struct rt_exporter export_all;	/* Route export journal for all routes */		\
     struct rt_exporter export_best;	/* Route export journal for best routes */		\
+    struct lfjour_recipient all_req;	/* Internal request for best route recalculation */     \
+    struct rt_pending_export *last_best_rpe;	/* Last RPE in best for best route selection flush */   \
+    u32 best_rte_count;                   /* Number of best routes in the table */              \
+    byte all_req_valid;                 /* Requests for recalculating best route are valid (table is not shutting down) */  \
 
 /* The complete rtable structure */
 struct rtable_private {
@@ -418,7 +421,6 @@ struct rtable_private {
 					 */
 
   struct deferred_call *reconf_end;	/* Reconfiguration done callback */
-  struct rt_export_request best_req;	/* Internal request from best route announcement cleanup */
   struct rt_uncork_callback nhu_uncork;	/* Helper event to schedule NHU on uncork */
   struct rt_uncork_callback hcu_uncork;	/* Helper event to schedule HCU on uncork */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
@@ -543,7 +545,7 @@ static inline bool rt_cork_check(struct rt_uncork_callback *rcc)
 struct rt_pending_export {
   struct rt_export_item it;
   struct rt_pending_export *_Atomic next;	/* Next export for the same net */
-  u64 seq_all;					/* Interlink from BEST to ALL */
+  struct rt_pending_export *all;		/* Interlink from BEST to ALL */
 };
 
 struct rt_net_pending_export {
@@ -551,6 +553,7 @@ struct rt_net_pending_export {
 };
 
 typedef struct network {
+  const rte *_Atomic best_rte;                  /* The best route */
   struct rte_storage * _Atomic routes;		/* Available routes for this network */
 
   /* Uncleaned pending exports */
