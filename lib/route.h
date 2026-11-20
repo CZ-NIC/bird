@@ -64,6 +64,7 @@ static inline rte rte_init_from(const rte *r)
 }
 
 int rte_same(const rte *, const rte *);
+rte *rte_select_best_from_feed(rte *rte_for_selection, uint count);
 
 struct rte_src {
   struct rte_src *next;			/* Hash chain */
@@ -76,6 +77,7 @@ struct rte_src {
 struct rte_owner_class {
   void (*get_route_info)(const rte *, byte *buf); /* Get route information (for `show route' command) */
   int (*rte_better)(const rte *, const rte *);
+  const rte *(*rte_best)(const rte **, u32);
   int (*rte_mergable)(const rte *, const rte *);
   u32 (*rte_igp_metric)(const rte *);
 };

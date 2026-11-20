@@ -103,13 +103,6 @@ kbr_match_fdb(const rte *x, const rte *y)
 }
 
 
-
-int
-kbr_alt_export(const struct rt_prefilter *rpf UNUSED, const net_addr *n)
-{
-  return mac_zero(net_mac_addr(n));
-}
-
 /* Find matching route in the BIRD table */
 static struct rte *
 kbr_find_fdb(struct kbr_proto *p UNUSED, struct channel *c, const net_addr *n, const rte *ref)
@@ -121,6 +114,15 @@ kbr_find_fdb(struct kbr_proto *p UNUSED, struct channel *c, const net_addr *n, c
     if (!feed)
       return NULL;
 
+    rte *best = rte_select_best_from_feed(feed->block, feed->count_routes);
+
+    if (best)
+    {
+      if (best->flags & REF_OBSOLETE)
+	return NULL;
+      else if (rte_is_valid(best) && kbr_match_fdb(best, ref))
+	return best;
+    }
     for (uint i = 0; i < feed->count_routes; i++)
       if (feed->block[i].flags & REF_OBSOLETE)
 	return NULL;
@@ -343,15 +345,16 @@ kbr_prune_fdbs(struct kbr_proto *p)
 	/* For BUM routes, handle all tunnel entries */
 	for (uint i = 0; i < f->count_routes; i++)
 	  if (f->block[i].flags & REF_OBSOLETE)
-	    break;
+	    continue;
 	  else if (rte_is_valid(&f->block[i]))
 	    kbr_prune_fdb(p, c, f->ni->addr, &f->block[i]);
       }
       else
       {
 	/* For regular routes, handle only the best route */
-	if (f->count_routes && rte_is_valid(&f->block[0]))
-	  kbr_prune_fdb(p, c, f->ni->addr, &f->block[0]);
+  rte *best = rte_select_best_from_feed(f->block, f->count_routes);
+	if (f->count_routes && rte_is_valid(best))
+	  kbr_prune_fdb(p, c, f->ni->addr, best);
       }
 
   rt_feeder_unsubscribe(&fx);
@@ -392,6 +395,8 @@ static void
 kbr_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *n, rte *new, const rte *old)
 {
   struct kbr_proto *p = (void *) P;
+
+TODO: !!!! REWRITE THIS TO A RAW EXPORTER !!!!
 
   /* Before first scan we do not touch the routes */
   if (!p->synced)
@@ -476,15 +481,16 @@ kbr_flush_routes(struct kbr_proto *p)
 	/* For BUM routes, handle all tunnel entries */
 	for (uint i = 0; i < f->count_routes; i++)
 	  if (f->block[i].flags & REF_OBSOLETE)
-	    break;
+	    continue;
 	  else if (rte_is_valid(&f->block[i]) && bmap_test(&c->export_accepted_map, f->block[i].id))
 	    kbr_rt_notify(&p->p, c, f->ni->addr, NULL, &f->block[i]);
       }
       else
       {
 	/* For regular routes, handle only the best route */
-	if (f->count_routes && rte_is_valid(&f->block[0]) && bmap_test(&c->export_accepted_map, f->block[0].id))
-	  kbr_rt_notify(&p->p, c, f->ni->addr, NULL, &f->block[0]);
+  rte *best = rte_select_best_from_feed(f->block, f->count_routes);
+	if (f->count_routes && rte_is_valid(best) && bmap_test(&c->export_accepted_map, best->id))
+	  kbr_rt_notify(&p->p, c, f->ni->addr, NULL, best);
       }
 
   rt_feeder_unsubscribe(&fx);

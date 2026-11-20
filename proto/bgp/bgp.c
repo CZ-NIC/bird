@@ -3099,7 +3099,7 @@ done:
 
 struct rte_owner_class bgp_rte_owner_class = {
   .get_route_info = 	bgp_get_route_info,
-  .rte_better =		bgp_rte_better,
+  .rte_best = bgp_rte_best,
   .rte_mergable =	bgp_rte_mergable,
   .rte_igp_metric =	bgp_rte_igp_metric,
 };
@@ -3620,15 +3620,6 @@ bgp_postconfig(struct proto_config *CF)
 
     if (cf->multihop && (cc->gw_mode == GW_DIRECT))
       cf_error("Multihop BGP cannot use direct gateway mode");
-
-    if ((cc->gw_mode == GW_RECURSIVE) && cc->c.table->sorted)
-      cf_error("BGP in recursive mode prohibits sorted table");
-
-    if (cf->deterministic_med && cc->c.table->sorted)
-      cf_error("BGP with deterministic MED prohibits sorted table");
-
-    if (cc->secondary && !cc->c.table->sorted)
-      cf_error("BGP with secondary option requires sorted table");
 
     if (cc->require_ext_next_hop && !cc->ext_next_hop)
       cf_warn("Extended next hop required but not enabled");

@@ -147,14 +147,15 @@ rt_export_get(struct rt_export_request *r)
       rtex_trace(r, D_ROUTES, "Expediting %N feed due to pending update %lu", n, update->seq);
       if (r->feeder.domain.rtable)
       {
-	LOCK_DOMAIN(rtable, r->feeder.domain);
-	feed = e->feed_net(e, NULL, ni->index, &r->seq_map, NULL, NULL, update);
-	UNLOCK_DOMAIN(rtable, r->feeder.domain);
+        LOCK_DOMAIN(rtable, r->feeder.domain);
+        //feed = e->feed_net(e, NULL, ni->index, &r->seq_map, NULL, NULL, update);
+        feed = e->feed_net(e, NULL, ni->index, &r->seq_map, NULL, NULL, update);
+        UNLOCK_DOMAIN(rtable, r->feeder.domain);
       }
       else
       {
-	RCU_ANCHOR(u);
-	feed = e->feed_net(e, u, ni->index, &r->seq_map, NULL, NULL, update);
+        RCU_ANCHOR(u);
+        feed = e->feed_net(e, u, ni->index, &r->seq_map, NULL, NULL, update);
       }
 
       ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
