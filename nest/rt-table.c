@@ -1600,27 +1600,6 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
   return best;
 }
 
-static void
-rt_notify_merged(struct channel *c, const struct rt_export_feed *f)
-{
-  const rte *old_best = NULL;
-  /* Find old best route */
-  for (uint i = 0; i < f->count_routes; i++)
-    if (bmap_test(&c->export_accepted_map, f->block[i].id))
-    {
-      old_best = &f->block[i];
-      break;
-    }
-
-  /* Prepare new merged route */
-  rte *new_merged = f->count_routes ? rt_export_merged(c, f, tmp_linpool, 0) : NULL;
-
-  /* And notify the protocol */
-  if (new_merged || old_best)
-    do_rt_notify(c, f->ni->addr, new_merged, old_best);
-}
-
-
 void
 channel_notify_merged(void *_channel)
 {
@@ -1628,25 +1607,55 @@ channel_notify_merged(void *_channel)
 
   RT_EXPORT_WALK(&c->out_req, u)
   {
+    const struct rt_export_feed *f = NULL;
+
     switch (u->kind)
     {
       case RT_EXPORT_STOP:
 	bug("Main table export stopped");
 
       case RT_EXPORT_FEED:
-	if (u->feed->count_routes)
-	  rt_notify_merged(c, u->feed);
+	f = u->feed;
 	break;
 
       case RT_EXPORT_UPDATE:
-	{
-	  struct rt_export_feed *f = rt_net_feed(c->table, u->update->new ? u->update->new->net : u->update->old->net, SKIP_BACK(const struct rt_pending_export, it, u->update));
-	  rt_notify_merged(c, f);
-	  for (uint i=0; i<f->count_exports; i++)
-	    rt_export_processed(&c->out_req, f->exports[i]);
-	  break;
-	}
+	f = rt_net_feed(c->table, u->update->new ? u->update->new->net : u->update->old->net, SKIP_BACK(const struct rt_pending_export, it, u->update));
+	break;
+
     }
+
+    const rte *old_best = NULL;
+
+    /* Find old best route */
+    for (uint i = 0; i < f->count_routes; i++)
+      if (bmap_test(&c->export_accepted_map, f->block[i].id))
+      {
+	old_best = &f->block[i];
+	break;
+      }
+
+    /* Prepare new merged route */
+    rte *new_merged = f->count_routes ? rt_export_merged(c, f, tmp_linpool, 0) : NULL;
+
+    /* And notify the protocol */
+    if (new_merged || old_best)
+      do_rt_notify(c, f->ni->addr, new_merged, old_best);
+
+    /* Clean up old route flags */
+    for (uint i=0; i<f->count_routes; i++)
+    {
+      rte *r = &f->block[i];
+
+      if (r->flags & REF_OBSOLETE)
+      {
+	bmap_clear(&c->export_accepted_map, r->id);
+	bmap_clear(&c->export_rejected_map, r->id);
+      }
+    }
+
+    /* Mark pending exports processed */
+    for (uint i=0; i<f->count_exports; i++)
+      rt_export_processed(&c->out_req, f->exports[i]);
 
     MAYBE_DEFER_TASK(c->out_req.r.target, c->out_req.r.event,
 	"export to %s.%s (merged)", c->proto->name, c->name);
