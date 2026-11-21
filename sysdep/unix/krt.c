@@ -777,7 +777,6 @@ krt_rt_notify(struct proto *P, struct channel *ch, const net_addr *net,
     case KPS_LEARNING:
       bug("%s: Graceful recovery in progress but received route notification.", P->name);
 
-    case KPS_IDLE:
     case KPS_PRUNING:
       if (new && bmap_test(&p->seen_map, new->id))
       {
@@ -791,6 +790,7 @@ krt_rt_notify(struct proto *P, struct channel *ch, const net_addr *net,
       }
 
       /* fall through */
+    case KPS_IDLE:
     case KPS_FIRST_SCAN:
     case KPS_SCANNING:
       /* Actually replace the route */
