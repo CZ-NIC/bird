@@ -80,9 +80,19 @@
 
 /* Utility macros */
 
-#define MIN_(a,b) (((a)<(b))?(a):(b))
-#define MAX_(a,b) (((a)>(b))?(a):(b))
-#define CLAMP(a,l,h) (((a)<(l)) ? (l) : (((a)>(h)) ? (h) : (a)))
+#define MIN_(a,b) ({	\
+    typeof(a) _a = (a); \
+    typeof(b) _b = (b); \
+    (_a < _b) ? _a : _b; })
+#define MAX_(a,b) ({	\
+    typeof(a) _a = (a); \
+    typeof(b) _b = (b); \
+    (_a > _b) ? _a : _b; })
+#define CLAMP(a,l,h) ({ \
+    typeof(a) _a = (a); \
+    typeof(l) _l = (l); \
+    typeof(h) _h = (h); \
+    (_a < _l) ? _l : (_a > _h) ? _h : _a; })
 
 #ifndef PARSER
 #undef MIN
@@ -113,6 +123,27 @@ static inline int u64_cmp(u64 i1, u64 i2)
 
 #define U32_UNDEF ((u32) -1)
 #define U64_UNDEF ((u64) -1)
+
+#define ARRAY_FILTER(r, count, item, expr) ({ \
+    uint _j = 0; \
+    for (uint _i = 0; _i < count; _i++) { \
+      typeof(r[_i]) *item = &r[_i]; \
+      if (expr) { \
+	if (_j < _i) \
+	  r[_j] = r[_i]; \
+	_j++; \
+      } \
+    } \
+  _j; })
+
+#define ARRAY_REDUCE(r, count, item, func, expr, init) ({ \
+    typeof(r[0]) *item = &r[0]; \
+    typeof(expr) _result = init; \
+    for (uint _i = 0; _i < count; _i++) { \
+      typeof(r[_i]) *item = &r[_i]; \
+      _result = func((expr), _result); \
+    } \
+  _result; })
 
 
 /* Bitfield macros */
