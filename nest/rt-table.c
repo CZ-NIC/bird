@@ -1118,56 +1118,9 @@ rte_free_deferred(struct deferred_call *dc)
     rt_unlock_table(tab);
 }
 
-static int				/* Actually better or at least as good as */
-rte_better(const rte *new, const rte *old)
-{
-  int (*better)(const rte *, const rte *);
-
-  if (!rte_is_valid(old))
-    return 1;
-  if (!rte_is_valid(new))
-    return 0;
-
-  u32 np = rt_get_preference(new);
-  u32 op = rt_get_preference(old);
-
-  if (np > op)
-    return 1;
-  if (np < op)
-    return 0;
-  if (new->src->owner->class != old->src->owner->class)
-    {
-      /*
-       *  If the user has configured protocol preferences, so that two different protocols
-       *  have the same preference, try to break the tie by comparing addresses. Not too
-       *  useful, but keeps the ordering of routes unambiguous.
-       */
-      return new->src->owner->class > old->src->owner->class;
-    }
-  if (better = new->src->owner->class->rte_better)
-    return better(new, old);
-  return 0;
-}
-
-static int
-rte_mergable(const rte *pri, const rte *sec)
-{
-  int (*mergable)(const rte *, const rte *);
-
-  if (!rte_is_valid(pri) || !rte_is_valid(sec))
-    return 0;
-
-  if (rt_get_preference(pri) != rt_get_preference(sec))
-    return 0;
-
-  if (pri->src->owner->class != sec->src->owner->class)
-    return 0;
-
-  if (mergable = pri->src->owner->class->rte_mergable)
-    return mergable(pri, sec);
-
-  return 0;
-}
+/*
+ * Route tracing
+ */
 
 static void
 rte_trace(const char *name, const rte *e, int dir, const char *msg)
@@ -1211,6 +1164,176 @@ rt_rte_trace_out(uint flag, struct rt_export_request *req, const rte *e, const c
     rte_trace(req->name, e, '<', msg);
 }
 #endif
+
+/*
+ * Best route selection
+ */
+
+uint
+rte_mergable(const rte **r, uint count)
+{
+  /* Keep only valid routes */
+  uint j = 0;
+  for (uint i = 0; i < count; i++)
+    if (rte_is_valid(r[i]))
+      r[j++] = r[i];
+  count = j;
+
+  if (count < 2)
+    return count;
+
+  /* Preload first route info */
+  u32 pref0 = rt_get_preference(r[0]);
+  struct rte_owner_class *cls0 = r[0]->src->owner->class;
+
+  /* Inspect other candidates */
+  j = 1;
+  for (uint i = 1; i < count; i++)
+  {
+    bool replace = false;
+
+    /* Prefer better preference */
+    u32 pref = rt_get_preference(r[i]);
+    if (!replace && (pref < pref0))
+      continue;
+    if (pref > pref0)
+      replace = true;
+
+    /* Keep only one class */
+    struct rte_owner_class *cls = r[i]->src->owner->class;
+    if (!replace && (cls > cls0))
+      continue;
+    if (cls < cls0)
+      replace = true;
+
+    if (replace)
+    {
+      /* If better, replace the best */
+      pref0 = pref;
+      cls0 = cls;
+      j = 0;
+    }
+
+    /* Collect the route */
+    r[j++] = r[i];
+  }
+  count = j;
+
+  if (count < 2)
+    return count;
+
+  /* Run class-specific mergable() if exists */
+  uint (*mergable)(const rte **r, uint count) = r[0]->src->owner->class->rte_mergable;
+  if (mergable)
+    return mergable(r, count);
+
+  return j;
+}
+
+static int
+rte_last_resort_better(const rte *new, const rte *old)
+{
+  return new->lastmod < old->lastmod;
+}
+
+const rte *
+rte_select_best(const rte **r, uint count, const rte *old_best)
+{
+  for (uint i=0; i<count; i++)
+    rte_trace("@best", r[i], '?', "entering");
+
+  count = rte_mergable(r, count);
+
+  if (count == 0)
+    return NULL;
+
+  if (count == 1)
+    return r[0];
+
+  if (old_best->flags & REF_OBSOLETE)
+    old_best = NULL;
+
+  /* Run class-specific rte_best() if exists */
+  const rte *(*best)(const rte **r, uint count, const rte *) = r[0]->src->owner->class->rte_best;
+  if (best)
+    return best(r, count, old_best);
+
+  /* Run class-specific rte_better() if exists, otherwise oldest is best */
+  const rte *brte = r[0];
+  int (*better)(const rte *, const rte *) = r[0]->src->owner->class->rte_better ?: rte_last_resort_better;
+
+  for (uint i = 1; i < count; i++)
+    if (better(r[i], brte))
+      brte = r[i];
+
+  return brte;
+}
+
+uint
+rte_mergable_feed(const struct rt_export_feed *f)
+{
+  TMP_SAVED {
+    /* Collect pointers */
+    const rte **r = tmp_alloc(f->count_routes * sizeof *r);
+    uint count = 0;
+    for (uint i = 0; i < f->count_routes; i++)
+      /* Never consider obsolete routes */
+      if (!(f->block[i].flags & REF_OBSOLETE))
+	r[count++] = &f->block[i];
+
+    /* Get mergables */
+    count = rte_mergable(r, count);
+
+    /* Reconstruct feed */
+    for (uint i = 0; i < count - 1; i++)
+      if (r[i] != &f->block[i])
+      {
+	ASSERT_DIE(r[i] >= f->block);
+
+	uint offset = r[i] - f->block;
+	ASSERT_DIE(offset < f->count_routes);
+
+	rte *rr = &f->block[offset];
+	ASSERT_DIE(rr == r[i]);
+
+	rte tmp = f->block[i];
+	f->block[i] = *rr;
+	*rr = tmp;
+
+	r[i] = &f->block[i];
+      }
+
+    ASSERT_DIE(r[count-1] == &f->block[count-1]);
+    return count;
+  }
+
+  return 0;
+}
+
+
+rte *
+rte_select_best_feed(const struct rt_export_feed *f, const rte *old_best)
+{
+  TMP_SAVED {
+    const rte **r = tmp_alloc(f->count_routes * sizeof *r);
+    for (uint i = 0; i < f->count_routes; i++)
+      r[i] = &f->block[i];
+
+    const rte *best = rte_select_best(r, f->count_routes, old_best);
+
+    ASSERT_DIE(best >= f->block);
+
+    uint offset = best - f->block;
+    ASSERT_DIE(offset < f->count_routes);
+ 
+    rte *rr = &f->block[offset];
+    ASSERT_DIE(rr == best);
+
+    return rr;
+  }
+
+  return NULL;
+}
 
 static uint
 rte_feed_count(struct rtable_reading *tr, net *n)
@@ -1885,46 +2008,15 @@ rte *
 rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *pool, int silent)
 {
   bool feeding = !silent && rt_net_is_feeding(&c->out_req, feed->ni->addr);
-
-  // struct proto *p = c->proto;
   struct nexthop_adata *nhs = NULL;
-  rte *best = &feed->block[0];
 
-  /* First route is obsolete */
-  if (best->flags & REF_OBSOLETE)
-    return NULL;
+  uint count = rte_mergable_feed(feed);
 
-  /* First route is invalid */
-  if (!rte_is_valid(best))
-    return NULL;
+  rte *r0 = NULL, *r0u = NULL;
 
-  /* Already rejected, no need to re-run the filter */
-  if (!feeding && bmap_test(&c->export_rejected_map, best->id))
-    return NULL;
-
-  /* Best route doesn't pass the filter */
-  if (!export_filter(c, best, silent))
-  {
-    if (!silent)
-      bmap_set(&c->export_rejected_map, best->id);
-    return NULL;
-  }
-
-  /* Unreachable routes can't be merged */
-  if (!rte_is_reachable(best))
-    return best;
-
-  for (uint i = 1; i < feed->count_routes; i++)
+  for (uint i = 0; i < count; i++)
   {
     rte *r = &feed->block[i];
-
-    /* Obsolete routes can't be merged */
-    if (r->flags & REF_OBSOLETE)
-      break;
-
-    /* Failed to pass mergable test */
-    if (!rte_mergable(best, r))
-      continue;
 
     /* Already rejected by filters */
     if (!feeding && bmap_test(&c->export_rejected_map, r->id))
@@ -1938,9 +2030,17 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
       continue;
     }
 
+    /* Store exportable route with lowest id */
+    if (!r0u || (r0u->id > r->id))
+      r0u = r;
+
     /* New route unreachable */
     if (!rte_is_reachable(r))
       continue;
+
+    /* Store reachable route with lowest id */
+    if (!r0 || (r0->id > r->id))
+      r0 = r;
 
     /* Merging next hops */
     eattr *nhea = ea_find(r->attrs, &ea_gen_nexthop);
@@ -1955,16 +2055,14 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
   /* There is some nexthop, we shall set the merged version to the route */
   if (nhs)
   {
-    eattr *nhea = ea_find(best->attrs, &ea_gen_nexthop);
-    ASSERT_DIE(nhea);
-
-    nhs = nexthop_merge(nhs, (struct nexthop_adata *) nhea->u.ptr, c->merge_limit, pool);
-
-    ea_set_attr(&best->attrs,
+    ASSERT_DIE(r0);
+    ea_set_attr(&r0->attrs,
 	EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, &nhs->ad));
+    return r0;
   }
-
-  return best;
+  /* There is at least one unreachable route available */
+  else
+    return r0u;
 }
 
 static void
@@ -2335,6 +2433,7 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
   struct rt_import_stats *stats = &c->stats;
   struct rte_storage *old_best_stored = NET_BEST_ROUTE(table, net);
   const rte *old_best = old_best_stored ? &old_best_stored->rte : NULL;
+  struct rte_storage *chain_start = old_best_stored;
 
   /* If the new route is identical to the old one, we find the attributes in
    * cache and clone these with no performance drop. OTOH, if we were to lookup
@@ -2347,19 +2446,20 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
     new = RTES_WRITE(new_stored);
   }
 
-  struct rte_storage * _Atomic *last_ptr = NULL;
   struct rte_storage *old_stored = NULL;
   const rte *old = NULL;
+  uint count = 0;
 
   /* Find the original route from the same protocol */
   NET_WALK_ROUTES(table, net, ep, e)
   {
-    last_ptr = &e->next;
     if (e->rte.src == src)
       if (old_stored)
 	bug("multiple routes in table with the same src");
       else
 	old_stored = e;
+    else if (!(e->flags & REF_OBSOLETE))
+      count++;
   }
 
   if (old_stored)
@@ -2439,116 +2539,60 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
   if (old_ok || new_ok)
     table->last_rt_change = current_time();
 
-  /* Finalize the new stored route */
   if (new_stored)
     {
+      /* Finalize the new stored route */
       new->lastmod = current_time();
       new->id = hmap_first_zero(&table->id_map);
       hmap_set(&table->id_map, new->id);
+
+      /* Put the new route into the chain to the beginning */
+      atomic_store_explicit(&new_stored->next, old_best_stored, memory_order_relaxed);
+      chain_start = new_stored;
+
+      /* Fix statistics */
+      table->rt_count++;
+      count++;
     }
 
   /* We need to add a spinlock sentinel to the beginning */
   _Thread_local static struct rte_storage local_sentinel = { .flags = REF_OBSOLETE, };
-  atomic_store_explicit(&local_sentinel.next, old_best_stored, memory_order_release);
+  atomic_store_explicit(&local_sentinel.next, chain_start, memory_order_release);
   atomic_store_explicit(&net->routes, &local_sentinel, memory_order_release);
 
   /* Mark also the old route as obsolete. */
   if (old_stored)
     old_stored->flags |= REF_OBSOLETE;
 
-  if (table->config->sorted)
-    {
-      /* If routes are sorted, just insert new route to appropriate position */
-      if (new_stored)
-	{
-	  struct rte_storage * _Atomic *k = &local_sentinel.next, *kk;
-	  for (; kk = atomic_load_explicit(k, memory_order_relaxed); k = &kk->next)
-	    if ((kk != old_stored) && rte_better(new, &kk->rte))
-	      break;
+  /* Find the actual best route */
+  const rte *new_best = NULL;
 
-	  /* Do not flip the operation order, the list must stay consistent */
-	  atomic_store_explicit(&new_stored->next, kk, memory_order_release);
-	  atomic_store_explicit(k, new_stored, memory_order_release);
+  TMP_SAVED {
+    const rte **r = tmp_alloc(count * sizeof *r);
 
-	  table->rt_count++;
-	}
-    }
-  else
-    {
-      /* If routes are not sorted, find the best route and move it on
-	 the first position. There are several optimized cases. */
+    WITH(uint, i, 0)
+      NET_WALK_ROUTES(table, net, ep, e)
+	if (!(e->flags & REF_OBSOLETE))
+	  r[i++] = &e->rte;
 
-      if (src->owner->rte_recalculate &&
-	  src->owner->rte_recalculate(table, net, new_stored, old_stored, old_best_stored))
-	goto do_recalculate;
+    new_best = rte_select_best(r, count, old_best);
+    if (new_best)
+      rte_trace("@best", new_best, '*', "selected");
+  }
 
-      if (new_stored && rte_better(&new_stored->rte, old_best))
-	{
-	  /* The first case - the new route is clearly optimal,
-	     we link it at the first position */
+  /* Easy case: the first route is optimal */
+  if (&chain_start->rte == new_best)
+    ;
 
-	  /* First link to the chain */
-	  atomic_store_explicit(&new_stored->next,
-	      atomic_load_explicit(&local_sentinel.next, memory_order_acquire),
-	      memory_order_release);
-
-	  /* And then link to the added route */
-	  atomic_store_explicit(&local_sentinel.next, new_stored, memory_order_release);
-
-	  table->rt_count++;
-	}
-      else if (old == old_best)
-	{
-	  /* The second case - the old best route will disappear, we add the
-	     new route (if we have any) to the list (we don't care about
-	     position) and then we elect the new optimal route and relink
-	     that route at the first position and announce it. New optimal
-	     route might be NULL if there is no more routes */
-
-	do_recalculate:
-	  /* Add the new route to the list right behind the old one */
-	  if (new_stored)
-	  {
-	    /* There is the same piece of code several lines farther. Needs refactoring.
-	     * The old_stored check is needed because of the possible jump from deterministic med */
-	    if (old_stored)
-	    {
-	      atomic_store_explicit(&new_stored->next, atomic_load_explicit(&old_stored->next, memory_order_relaxed), memory_order_release);
-	      atomic_store_explicit(&old_stored->next, new_stored, memory_order_release);
-	    }
-	    else
-	    {
-	      atomic_store_explicit(&new_stored->next, NULL, memory_order_release);
-	      atomic_store_explicit(last_ptr, new_stored, memory_order_release);
-	    }
-
-	    table->rt_count++;
-	  }
-
-	  /* Find a new optimal route (if there is any) */
-	  struct rte_storage * _Atomic *bp = &local_sentinel.next;
-	  struct rte_storage *best = atomic_load_explicit(bp, memory_order_relaxed);
-
-	  /* Best can't be the old one */
-	  if (best == old_stored)
-	  {
-	    bp = &best->next;
-	    best = atomic_load_explicit(bp, memory_order_relaxed);
-	  }
-
-	  if (best)
-	  {
-	    for (struct rte_storage *kk, * _Atomic *k = &best->next;
-		kk = atomic_load_explicit(k, memory_order_relaxed);
-		k = &kk->next)
-	      if (rte_better(&kk->rte, &best->rte))
-		best = atomic_load_explicit(bp = k, memory_order_relaxed);
-
-	    /* Now we know which route is the best one, we have to relink it
-	     * to the front place. */
-
+  /* There is some new best route but it isn't the new one. We need to find it. */
+  else if (new_best)
+  {
+    NET_WALK_ROUTES(table, net, bp, best)
+      if (new_best == &best->rte)
+      {
 	    /* First we wait until all readers finish */
 	    synchronize_rcu();
+
 	    /* Now all readers must have seen the local spinlock sentinel
 	     * and will wait until we re-arrange the structure */
 
@@ -2558,36 +2602,14 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
 		memory_order_release);
 
 	    /* After the best route, the original chain shall be linked */
-	    atomic_store_explicit(&best->next,
-		atomic_load_explicit(&local_sentinel.next, memory_order_relaxed),
-		memory_order_release);
+	    atomic_store_explicit(&best->next, chain_start, memory_order_release);
 
 	    /* And now we finally link the best route first */
 	    atomic_store_explicit(&local_sentinel.next, best, memory_order_release);
-	  }
-	}
-      else if (new_stored)
-	{
-	  /* The third case - the new route is not better than the old
-	     best route (therefore old_best != NULL) and the old best
-	     route was not removed (therefore old_best == net->routes).
-	     We just link the new route to the old/last position. */
 
-	  if (old_stored)
-	  {
-	    atomic_store_explicit(&new_stored->next,
-		atomic_load_explicit(&old_stored->next, memory_order_relaxed),
-		memory_order_release);
-	    atomic_store_explicit(&old_stored->next, new_stored, memory_order_release);
-	  }
-	  else
-	  {
-	    atomic_store_explicit(&new_stored->next, NULL, memory_order_relaxed);
-	    atomic_store_explicit(last_ptr, new_stored, memory_order_release);
-	  }
-	}
-      /* The fourth (empty) case - suboptimal route is being removed, nothing to do */
-    }
+	    break;
+      }
+  }
 
   /* Finally drop the old route */
   if (old_stored)
@@ -2603,18 +2625,21 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
 	ASSERT_DIE(!seen++);
       }
     ASSERT_DIE(seen == 1);
+
+    /* Fix statistics */
+    table->rt_count--;
   }
 
-  struct rte_storage *new_best = atomic_load_explicit(&local_sentinel.next, memory_order_relaxed);
+  struct rte_storage *new_best_stored = atomic_load_explicit(&local_sentinel.next, memory_order_relaxed);
 
   /* Log the route change */
   if (new_ok)
-    rt_rte_trace_in(D_ROUTES, req, &new_stored->rte, new_stored == new_best ? "added [best]" : "added");
+    rt_rte_trace_in(D_ROUTES, req, &new_stored->rte, new_stored == new_best_stored ? "added [best]" : "added");
   else if (old_ok)
     {
       if (old != old_best)
 	rt_rte_trace_in(D_ROUTES, req, old, "removed");
-      else if (new_best && rte_is_ok(&new_best->rte))
+      else if (new_best && rte_is_ok(new_best))
 	rt_rte_trace_in(D_ROUTES, req, old, "removed [replaced]");
       else
 	rt_rte_trace_in(D_ROUTES, req, old, "removed [sole]");
@@ -2626,10 +2651,10 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
   /* Propagate the route change */
   rte_announce(table, i, net,
       RTE_OR_NULL(new_stored), RTE_OR_NULL(old_stored),
-      RTE_OR_NULL(new_best), RTE_OR_NULL(old_best_stored));
+      RTE_OR_NULL(new_best_stored), RTE_OR_NULL(old_best_stored));
 
   /* Now we can finally release the changes back for reading */
-  atomic_store_explicit(&net->routes, new_best, memory_order_release);
+  atomic_store_explicit(&net->routes, new_best_stored, memory_order_release);
 
   return;
 }
@@ -4772,26 +4797,31 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
   /* Add behind the sentinel */
   atomic_store_explicit(&local_sentinel.next, next, memory_order_release);
 
-  /* Call the pre-comparison hooks */
-  for (uint i = 0; i < pos; i++)
-    if (updates[i].new_stored)
-      {
-	/* Not really an efficient way to compute this */
-	if (updates[i].old->rte.src->owner->rte_recalculate)
-	  updates[i].old->rte.src->owner->rte_recalculate(tab, n, updates[i].new_stored, updates[i].old, old_best);
-      }
-
   /* Find the new best route */
+  struct rte_storage *new_best = NULL;
   uint best_pos = 0;
-  struct rte_storage *new_best = updates[0].new_stored ?: updates[0].old;
+  TMP_SAVED {
+    const rte **r = tmp_alloc(pos * sizeof *r);
 
-  for (uint i = 1; i < pos; i++)
-  {
-    struct rte_storage *s = updates[i].new_stored ?: updates[i].old;
-    if (rte_better(&s->rte, &new_best->rte))
+    for (uint i = 0; i < pos; i++)
     {
-      best_pos = i;
-      new_best = s;
+      struct rte_storage *s = updates[i].new_stored ?: updates[i].old;
+      r[i] = &s->rte;
+    }
+
+    const rte *new_best_rte = rte_select_best(r, count, &old_best->rte);
+    if (new_best_rte)
+      rte_trace("@best/nhu", new_best_rte, '*', "selected");
+
+    for (uint i = 0; i < pos; i++)
+    {
+      struct rte_storage *s = updates[i].new_stored ?: updates[i].old;
+      if (&s->rte == new_best_rte)
+      {
+	new_best = s;
+	best_pos = i;
+	break;
+      }
     }
   }
 

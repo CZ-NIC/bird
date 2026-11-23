@@ -65,6 +65,15 @@ static inline rte rte_init_from(const rte *r)
 
 int rte_same(const rte *, const rte *);
 
+/* Best route selection */
+const rte *rte_select_best(const rte **r, uint count, const rte *old_best);
+uint rte_mergable(const rte **r, uint count);
+
+struct rt_export_feed;
+rte *rte_select_best_feed(const struct rt_export_feed *, const rte *old_best);
+uint rte_mergable_feed(const struct rt_export_feed *);
+
+/* Route source and class */
 struct rte_src {
   struct rte_src *next;			/* Hash chain */
   struct rte_owner *owner;		/* Route source owner */
@@ -76,13 +85,13 @@ struct rte_src {
 struct rte_owner_class {
   void (*get_route_info)(const rte *, byte *buf); /* Get route information (for `show route' command) */
   int (*rte_better)(const rte *, const rte *);
-  int (*rte_mergable)(const rte *, const rte *);
+  const rte *(*rte_best)(const rte **, uint count, const rte *old_best);
+  uint (*rte_mergable)(const rte **, uint count);
   u32 (*rte_igp_metric)(const rte *);
 };
 
 struct rte_owner {
   struct rte_owner_class *class;
-  int (*rte_recalculate)(struct rtable_private *, struct network *, struct rte_storage *new, struct rte_storage *, struct rte_storage *);
   HASH(struct rte_src) hash;
   const char *name;
   u32 hash_key;
