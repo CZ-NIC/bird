@@ -2568,7 +2568,7 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
   const rte *new_best = NULL;
 
   TMP_SAVED {
-    const rte **r = tmp_alloc(count);
+    const rte **r = tmp_alloc(count * sizeof *r);
 
     WITH(uint, i, 0)
       NET_WALK_ROUTES(table, net, ep, e)
