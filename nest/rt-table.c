@@ -2580,8 +2580,8 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
       rte_trace("@best", new_best, '*', "selected");
   }
 
-  /* Easy case: the new route is optimal */
-  if (new_stored && (new_best == &new_stored->rte))
+  /* Easy case: the first route is optimal */
+  if (&chain_start->rte == new_best)
     ;
 
   /* There is some new best route but it isn't the new one. We need to find it. */
