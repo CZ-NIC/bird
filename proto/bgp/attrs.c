@@ -3345,7 +3345,7 @@ bgp_rte_best(const rte **r, u32 count, const rte *old_best)
   /* RFC 5004 - prefer older routes
    * but only if they are external and from a different peer.
    * First part: before f), is the old best route relevant and still in the set? */
-  if (!old_best)
+  if (old_best)
   {
     struct bgp_proto *op = bgp_rte_proto(old_best);
     if (op->is_interior || !op->cf->prefer_older)
@@ -3363,8 +3363,6 @@ bgp_rte_best(const rte **r, u32 count, const rte *old_best)
 	old_best = NULL;
     }
   }
-  else
-    old_best = NULL;
 
   /* Preload first route info */
   struct bgp_proto *p0 = bgp_rte_proto(r[0]);
