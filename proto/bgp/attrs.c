@@ -3426,7 +3426,7 @@ bgp_rte_best(const rte **r, u32 count, const rte *old_best)
   }
 
   /* Now if there is more than one route, there is something terribly wrong */
-  ASSERT_DIE(count == 1);
+  ASSERT_DIE(j == 1);
   return old_best && p0->cf->prefer_older ? bgp_rte_best_older(p0, originator0, r[0], old_best) : r[0];
 }
 
