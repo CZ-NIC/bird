@@ -413,9 +413,9 @@ rt_dump_sources(struct dump_request *dreq, struct rte_owner *o)
 {
   RDUMP("\t%s: hord=%u, uc=%u, cnt=%u prune=%p, stop=%p\n",
       o->name, o->hash.order, o->uc, o->hash.count, o->prune, o->stop);
-  RDUMP("\tget_route_info=%p, better=%p, mergable=%p, igp_metric=%p, recalculate=%p",
+  RDUMP("\tget_route_info=%p, better=%p, mergable=%p, igp_metric=%p",
       o->class->get_route_info, o->class->rte_better, o->class->rte_mergable,
-      o->class->rte_igp_metric, o->rte_recalculate);
+      o->class->rte_igp_metric);
 
   int splitting = 0;
   HASH_WALK(o->hash, next, src)

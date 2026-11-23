@@ -260,9 +260,6 @@ struct bgp_channel_config {
 
 #define BGP_BFD_GRACEFUL	2	/* BFD down triggers graceful restart */
 
-/* rte->pflags */
-#define BGP_REF_SUPPRESSED	0x1	/* Used for deterministic MED comparison */
-
 struct bgp_af_caps {
   u32 afi;
   u8 ready;				/* Multiprotocol capability, RFC 4760 */
@@ -805,9 +802,8 @@ struct bgp_prefix *bgp_bucket_pop_prefix(struct bgp_ptx_private *c, struct bgp_b
 int bgp_bucket_pending(struct bgp_bucket *b);
 void bgp_done_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_bucket *buck);
 
-int bgp_rte_better(const rte *, const rte *);
-int bgp_rte_mergable(const rte *pri, const rte *sec);
-int bgp_rte_recalculate(struct rtable_private *table, net *net, struct rte_storage *new, struct rte_storage *old, struct rte_storage *old_best);
+const rte *bgp_rte_best(const rte **, uint count, const rte *old_best);
+uint bgp_rte_mergable(const rte **, uint count);
 void bgp_rte_modify_stale(void *bgp_channel);
 u32 bgp_rte_igp_metric(const rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, const rte *old);

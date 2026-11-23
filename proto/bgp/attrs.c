@@ -3097,386 +3097,339 @@ rte_stale(const rte *r)
   return a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE);
 }
 
-int
-bgp_rte_better(const rte *new, const rte *old)
+static inline uint
+rte_pathlen(const rte *r)
 {
-  struct bgp_proto *new_bgp = bgp_rte_proto(new);
-  struct bgp_proto *old_bgp = bgp_rte_proto(old);
-  eattr *x, *y;
-  u32 n, o;
-
-  /* Skip suppressed routes (see bgp_rte_recalculate()) */
-  n = new->pflags & BGP_REF_SUPPRESSED;
-  o = old->pflags & BGP_REF_SUPPRESSED;
-  if (n > o)
-    return 0;
-  if (n < o)
-    return 1;
-
-  /* RFC 4271 9.1.2.1. Route resolvability test */
-  n = rte_resolvable(new);
-  o = rte_resolvable(old);
-  if (n > o)
-    return 1;
-  if (n < o)
-    return 0;
-
-  /* LLGR 9494 - depreference stale routes */
-  n = rte_stale(new);
-  o = rte_stale(old);
-  if (n > o)
-    return 0;
-  if (n < o)
-    return 1;
-
- /* Start with local preferences */
-  x = ea_find(new->attrs, BGP_EA_ID(BA_LOCAL_PREF));
-  y = ea_find(old->attrs, BGP_EA_ID(BA_LOCAL_PREF));
-  n = x ? x->u.data : new_bgp->cf->default_local_pref;
-  o = y ? y->u.data : old_bgp->cf->default_local_pref;
-  if (n > o)
-    return 1;
-  if (n < o)
-    return 0;
-
-  /* RFC 7311 4.1 - Apply AIGP metric */
-  u64 n2 = bgp_total_aigp_metric(new);
-  u64 o2 = bgp_total_aigp_metric(old);
-  if (n2 < o2)
-    return 1;
-  if (n2 > o2)
-    return 0;
-
-  /* RFC 4271 9.1.2.2. a)  Use AS path lengths */
-  if (new_bgp->cf->compare_path_lengths || old_bgp->cf->compare_path_lengths)
-  {
-    x = ea_find(new->attrs, BGP_EA_ID(BA_AS_PATH));
-    y = ea_find(old->attrs, BGP_EA_ID(BA_AS_PATH));
-    n = x ? as_path_getlen(x->u.ptr) : AS_PATH_MAXLEN;
-    o = y ? as_path_getlen(y->u.ptr) : AS_PATH_MAXLEN;
-    if (n < o)
-      return 1;
-    if (n > o)
-      return 0;
-  }
-
-  /* RFC 4271 9.1.2.2. b) Use origins */
-  x = ea_find(new->attrs, BGP_EA_ID(BA_ORIGIN));
-  y = ea_find(old->attrs, BGP_EA_ID(BA_ORIGIN));
-  n = x ? x->u.data : ORIGIN_INCOMPLETE;
-  o = y ? y->u.data : ORIGIN_INCOMPLETE;
-  if (n < o)
-    return 1;
-  if (n > o)
-    return 0;
-
-  /* RFC 4271 9.1.2.2. c) Compare MED's */
-  /* Proper RFC 4271 path selection cannot be interpreted as finding
-   * the best path in some ordering. It is implemented partially in
-   * bgp_rte_recalculate() when deterministic_med option is
-   * active. Without that option, the behavior is just an
-   * approximation, which in specific situations may lead to
-   * persistent routing loops, because it is nondeterministic - it
-   * depends on the order in which routes appeared. But it is also the
-   * same behavior as used by default in Cisco routers, so it is
-   * probably not a big issue.
-   */
-  if (new_bgp->cf->med_metric || old_bgp->cf->med_metric ||
-      (bgp_get_neighbor(new) == bgp_get_neighbor(old)))
-  {
-    x = ea_find(new->attrs, BGP_EA_ID(BA_MULTI_EXIT_DISC));
-    y = ea_find(old->attrs, BGP_EA_ID(BA_MULTI_EXIT_DISC));
-    n = x ? x->u.data : new_bgp->cf->default_med;
-    o = y ? y->u.data : old_bgp->cf->default_med;
-    if (n < o)
-      return 1;
-    if (n > o)
-      return 0;
-  }
-
-  /* RFC 4271 9.1.2.2. d) Prefer external peers */
-  if (new_bgp->is_interior > old_bgp->is_interior)
-    return 0;
-  if (new_bgp->is_interior < old_bgp->is_interior)
-    return 1;
-
-  /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
-  n = new_bgp->cf->igp_metric ? ea_get_int(new->attrs, &ea_gen_local_metric, 0) : 0;
-  o = old_bgp->cf->igp_metric ? ea_get_int(old->attrs, &ea_gen_local_metric, 0) : 0;
-  if (n < o)
-    return 1;
-  if (n > o)
-    return 0;
-
-  /* RFC 4271 9.1.2.2. f) Compare BGP identifiers */
-  /* RFC 4456 9. a) Use ORIGINATOR_ID instead of local neighbor ID */
-  x = ea_find(new->attrs, BGP_EA_ID(BA_ORIGINATOR_ID));
-  y = ea_find(old->attrs, BGP_EA_ID(BA_ORIGINATOR_ID));
-  n = x ? x->u.data : new_bgp->remote_id;
-  o = y ? y->u.data : old_bgp->remote_id;
-
-  /* RFC 5004 - prefer older routes */
-  /* (if both are external and from different peer) */
-  if ((new_bgp->cf->prefer_older || old_bgp->cf->prefer_older) &&
-      !new_bgp->is_internal && n != o)
-    return 0;
-
-  /* rest of RFC 4271 9.1.2.2. f) */
-  if (n < o)
-    return 1;
-  if (n > o)
-    return 0;
-
-  /* RFC 4456 9. b) Compare cluster list lengths */
-  x = ea_find(new->attrs, BGP_EA_ID(BA_CLUSTER_LIST));
-  y = ea_find(old->attrs, BGP_EA_ID(BA_CLUSTER_LIST));
-  n = x ? int_set_get_size(x->u.ptr) : 0;
-  o = y ? int_set_get_size(y->u.ptr) : 0;
-  if (n < o)
-    return 1;
-  if (n > o)
-    return 0;
-
-  /* RFC 4271 9.1.2.2. g) Compare peer IP adresses */
-  return ipa_compare(new_bgp->remote_ip, old_bgp->remote_ip) < 0;
+  const eattr *a = ea_find(r->attrs, BGP_EA_ID(BA_AS_PATH));
+  return a ? as_path_getlen(a->u.ptr) : AS_PATH_MAXLEN;
 }
 
-
-int
-bgp_rte_mergable(const rte *pri, const rte *sec)
+static uint
+bgp_rte_mergable_before_med(const rte **r, uint count)
 {
-  struct bgp_proto *pri_bgp = bgp_rte_proto(pri);
-  struct bgp_proto *sec_bgp = bgp_rte_proto(sec);
-  eattr *x, *y;
-  u32 p, s;
+  if (count < 2)
+    return count;
 
-  /* Skip suppressed routes (see bgp_rte_recalculate()) */
-  if ((pri->pflags ^ sec->pflags) & BGP_REF_SUPPRESSED)
-    return 0;
+  /* Preload first route info */
+  struct bgp_proto *p0 = bgp_rte_proto(r[0]);
+  bool resolvable0 = rte_resolvable(r[0]);
+  bool stale0 = rte_stale(r[0]);
+#define LOAD_LOCAL_PREF(r, p) ea_get_int(r->attrs, BGP_EA_ID(BA_LOCAL_PREF), p->cf->default_local_pref)
+  u32 pref0 = LOAD_LOCAL_PREF(r[0], p0);
+  u32 aigp0 = bgp_total_aigp_metric(r[0]);
+  u32 pathlen0 = p0->cf->compare_path_lengths ? rte_pathlen(r[0]) : 0;
+#define LOAD_ORIGIN(r) ea_get_int(r->attrs, BGP_EA_ID(BA_ORIGIN), ORIGIN_INCOMPLETE)
+  u32 origin0 = LOAD_ORIGIN(r[0]);
 
-  /* RFC 4271 9.1.2.1. Route resolvability test */
-  if (rte_resolvable(pri) != rte_resolvable(sec))
-    return 0;
-
-  /* LLGR 9494 - depreference stale routes */
-  if (rte_stale(pri) != rte_stale(sec))
-    return 0;
-
-  /* Start with local preferences */
-  x = ea_find(pri->attrs, BGP_EA_ID(BA_LOCAL_PREF));
-  y = ea_find(sec->attrs, BGP_EA_ID(BA_LOCAL_PREF));
-  p = x ? x->u.data : pri_bgp->cf->default_local_pref;
-  s = y ? y->u.data : sec_bgp->cf->default_local_pref;
-  if (p != s)
-    return 0;
-
-  /* RFC 4271 9.1.2.2. a)  Use AS path lengths */
-  if (pri_bgp->cf->compare_path_lengths || sec_bgp->cf->compare_path_lengths)
+  /* Inspect other candidates */
+  uint j = 1;
+  for (uint i = 1; i < count; i++)
   {
-    x = ea_find(pri->attrs, BGP_EA_ID(BA_AS_PATH));
-    y = ea_find(sec->attrs, BGP_EA_ID(BA_AS_PATH));
-    p = x ? as_path_getlen(x->u.ptr) : AS_PATH_MAXLEN;
-    s = y ? as_path_getlen(y->u.ptr) : AS_PATH_MAXLEN;
+    struct bgp_proto *p = bgp_rte_proto(r[i]);
+    bool replace = false;
 
-    if (p != s)
-      return 0;
+    /* RFC 4271 9.1.2.1. Route resolvability test
+     * To be removed when we actually start treating unresolvable routes
+     * as ineligible. */
+    bool resolvable = rte_resolvable(r[i]);
+    if (!replace && (resolvable < resolvable0))
+      continue;
+    if (resolvable > resolvable0)
+      replace = true;
 
-//    if (DELTA(p, s) > pri_bgp->cf->relax_multipath)
-//      return 0;
-  }
+    /* RFC 9494: Depreference stale routes (LLGR) */
+    bool stale = rte_stale(r[i]);
+    if (!replace && (stale > stale0))
+      continue;
+    if (stale < stale0)
+      replace = true;
 
-  /* RFC 4271 9.1.2.2. b) Use origins */
-  x = ea_find(pri->attrs, BGP_EA_ID(BA_ORIGIN));
-  y = ea_find(sec->attrs, BGP_EA_ID(BA_ORIGIN));
-  p = x ? x->u.data : ORIGIN_INCOMPLETE;
-  s = y ? y->u.data : ORIGIN_INCOMPLETE;
-  if (p != s)
-    return 0;
+    /* RFC 4271 9.1.2 a) Local preference */
+    u32 pref = LOAD_LOCAL_PREF(r[i], p);
+    if (!replace && (pref < pref0))
+      continue;
+    if (pref > pref0)
+      replace = true;
 
-  /* RFC 4271 9.1.2.2. c) Compare MED's */
-  if (pri_bgp->cf->med_metric || sec_bgp->cf->med_metric ||
-      (bgp_get_neighbor(pri) == bgp_get_neighbor(sec)))
-  {
-    x = ea_find(pri->attrs, BGP_EA_ID(BA_MULTI_EXIT_DISC));
-    y = ea_find(sec->attrs, BGP_EA_ID(BA_MULTI_EXIT_DISC));
-    p = x ? x->u.data : pri_bgp->cf->default_med;
-    s = y ? y->u.data : sec_bgp->cf->default_med;
-    if (p != s)
-      return 0;
-  }
+    /* RFC 7311 4.1 AIGP metric */
+    u32 aigp = bgp_total_aigp_metric(r[i]);
+    if (!replace && (aigp > aigp0))
+      continue;
+    if (aigp < aigp0)
+      replace = true;
 
-  /* RFC 4271 9.1.2.2. d) Prefer external peers */
-  if (pri_bgp->is_interior != sec_bgp->is_interior)
-    return 0;
+    /* RFC 4271 9.1.2.2. a) AS path length */
+    u32 pathlen = (p->cf->compare_path_lengths || p0->cf->compare_path_lengths) ? rte_pathlen(r[i]) : 0;
+    if (!replace && (pathlen > pathlen0))
+      continue;
+    if (pathlen < pathlen0)
+      replace = true;
 
-  /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
-  p = pri_bgp->cf->igp_metric ? ea_get_int(pri->attrs, &ea_gen_local_metric, 0) : 0;
-  s = sec_bgp->cf->igp_metric ? ea_get_int(sec->attrs, &ea_gen_local_metric, 0) : 0;
-  if (p != s)
-    return 0;
+    /* RFC 4271 9.1.2.2. b) Origin */
+    u32 origin = ea_get_int(r[i]->attrs, BGP_EA_ID(BA_ORIGIN), ORIGIN_INCOMPLETE);
+    if (!replace && (origin > origin0))
+      continue;
+    if (origin < origin0)
+      replace = true;
 
-  /* Remaining criteria are ignored */
-
-  return 1;
-}
-
-
-static inline int
-same_group(const rte *r, u32 lpref, u32 lasn)
-{
-  return (rt_get_preference(r) == lpref) && (bgp_get_neighbor(r) == lasn);
-}
-
-static inline int
-use_deterministic_med(struct rte_storage *r)
-{
-  struct bgp_proto *p = bgp_rte_proto(&r->rte);
-  return p && p->cf->deterministic_med;
-}
-
-int
-bgp_rte_recalculate(struct rtable_private *table, net *net,
-    struct rte_storage *new_stored, struct rte_storage *old_stored, struct rte_storage *old_best_stored)
-{
-  struct rte_storage *key_stored = new_stored ? new_stored : old_stored;
-  const struct rte *new = RTE_OR_NULL(new_stored),
-		   *old = RTE_OR_NULL(old_stored),
-		   *old_best = RTE_OR_NULL(old_best_stored),
-		   *key = RTE_OR_NULL(key_stored);
-
-  u32 lpref = rt_get_preference(key);
-  u32 lasn = bgp_get_neighbor(key);
-  int old_suppressed = old ? !!(old->pflags & BGP_REF_SUPPRESSED) : 0;
-
-  /*
-   * Proper RFC 4271 path selection is a bit complicated, it cannot be
-   * implemented just by rte_better(), because it is not a linear
-   * ordering. But it can be splitted to two levels, where the lower
-   * level chooses the best routes in each group of routes from the
-   * same neighboring AS and higher level chooses the best route (with
-   * a slightly different ordering) between the best-in-group routes.
-   *
-   * When deterministic_med is disabled, we just ignore this issue and
-   * choose the best route by bgp_rte_better() alone. If enabled, the
-   * lower level of the route selection is done here (for the group
-   * to which the changed route belongs), all routes in group are
-   * marked as suppressed, just chosen best-in-group is not.
-   *
-   * Global best route selection then implements higher level by
-   * choosing between non-suppressed routes (as they are always
-   * preferred over suppressed routes). Routes from BGP protocols
-   * that do not set deterministic_med are just never suppressed. As
-   * they do not participate in the lower level selection, it is OK
-   * that this fn is not called for them.
-   *
-   * The idea is simple, the implementation is more problematic,
-   * mostly because of optimizations in rte_recalculate() that
-   * avoids full recalculation in most cases.
-   *
-   * We can assume that at least one of new, old is non-NULL and both
-   * are from the same protocol with enabled deterministic_med. We
-   * group routes by both neighbor AS (lasn) and preference (lpref),
-   * because bgp_rte_better() does not handle preference itself.
-   */
-
-  /* If new and old are from different groups, we just process that
-     as two independent events */
-  if (new && old && !same_group(old, lpref, lasn))
-  {
-    int i1, i2;
-    i1 = bgp_rte_recalculate(table, net, NULL, old_stored, old_best_stored);
-    i2 = bgp_rte_recalculate(table, net, new_stored, NULL, old_best_stored);
-    return i1 || i2;
-  }
-
-  /*
-   * We could find the best-in-group and then make some shortcuts like
-   * in rte_recalculate, but as we would have to walk through all
-   * net->routes just to find it, it is probably not worth. So we
-   * just have one simple fast case that use just the old route.
-   * We also set suppressed flag to avoid using it in bgp_rte_better().
-   */
-
-  if (new)
-    new_stored->pflags |= BGP_REF_SUPPRESSED;
-
-  if (old)
-  {
-    old_stored->pflags |= BGP_REF_SUPPRESSED;
-
-    /* The fast case - replace not best with worse (or remove not best) */
-    if (old_suppressed && !(new && bgp_rte_better(new, old)))
-      return 0;
-  }
-
-  /* The default case - find a new best-in-group route */
-  struct rte_storage *r = new_stored; /* new may not be in the list */
-  struct rte_storage *spinlocked = atomic_load_explicit(&net->routes, memory_order_acquire);
-  ASSERT_DIE(spinlocked->rte.flags & REF_OBSOLETE);
-  ASSERT_DIE(!spinlocked->rte.src);
-
-  for (struct rte_storage *s, * _Atomic *ptr = &spinlocked->next;
-      s = atomic_load_explicit(ptr, memory_order_acquire);
-      ptr = &s->next)
-    if (!rte_is_valid(&s->rte))
-      break;
-    else if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
+    if (replace)
     {
-      s->pflags |= BGP_REF_SUPPRESSED;
-      if (!r || bgp_rte_better(&s->rte, &r->rte))
-	r = s;
+      /* If better, replace the best */
+      p0 = p;
+      resolvable0 = resolvable;
+      stale0 = stale;
+      pref0 = pref;
+      aigp0 = aigp;
+      pathlen0 = pathlen;
+      origin0 = origin;
+      j = 0;
     }
 
-  /* Simple case - the last route in group disappears */
-  if (!r)
-    return 0;
+    /* Collect the route */
+    r[j++] = r[i];
+  }
 
-  /* Found if new is mergable with best-in-group */
-  if (new && (new_stored != r) && bgp_rte_mergable(&r->rte, new))
-    new_stored->pflags &= ~BGP_REF_SUPPRESSED;
-
-  /* Found all existing routes mergable with best-in-group */
-  for (struct rte_storage *s, * _Atomic *ptr = &spinlocked->next;
-      s = atomic_load_explicit(ptr, memory_order_acquire);
-      ptr = &s->next)
-    if (!rte_is_valid(&s->rte))
-      break;
-    else if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
-      if ((s != r) && bgp_rte_mergable(&r->rte, &s->rte))
-	s->pflags &= ~BGP_REF_SUPPRESSED;
-
-  /* Found best-in-group */
-  r->pflags &= ~BGP_REF_SUPPRESSED;
-
-  /*
-   * There are generally two reasons why we have to force
-   * recalculation (return 1): First, the new route may be wrongfully
-   * chosen to be the best in the first case check in
-   * rte_recalculate(), this may happen only if old_best is from the
-   * same group. Second, another (different than new route)
-   * best-in-group is chosen and that may be the proper best (although
-   * rte_recalculate() without ignore that possibility).
-   *
-   * There are three possible cases according to whether the old route
-   * was the best in group (OBG, i.e. !old_suppressed) and whether the
-   * new route is the best in group (NBG, tested by r == new). These
-   * cases work even if old or new is NULL.
-   *
-   * NBG -> new is a possible candidate for the best route, so we just
-   *        check for the first reason using same_group().
-   *
-   * !NBG && OBG -> Second reason applies, return 1
-   *
-   * !NBG && !OBG -> Best in group does not change, old != old_best,
-   *                 rte_better(new, old_best) is false and therefore
-   *                 the first reason does not apply, return 0
-   */
-
-  if (r == new_stored)
-    return old_best && same_group(old_best, lpref, lasn);
-  else
-    return !old_suppressed;
+  return j;
 }
+
+static int bgp_neighbor_cmp(const void *_a, const void *_b) {
+  const struct rte * const *a = _a, * const *b = _b;
+  return (bgp_get_neighbor(*a) - bgp_get_neighbor(*b));
+}
+
+static uint
+bgp_rte_mergable_med(const rte **r, uint count)
+{
+  if (count < 2)
+    return count;
+
+  /* RFC 4271 9.1.2.2. c) Compare MED's
+   *
+   * These are comparable only for the same neighbor, thus we need to sort
+   * the remaining routes by neighbors first.
+   * */
+  qsort(r, count, sizeof *r, bgp_neighbor_cmp);
+
+  /* Remove MED-worse routes per neighbor */
+  struct bgp_proto *p0 = bgp_rte_proto(r[0]);
+  uint index0 = 0;
+  u32 neighbor0 = p0->cf->deterministic_med ? bgp_get_neighbor(r[0]) : 0;
+  u32 med0 = p0->cf->med_metric ? ea_get_int(r[0]->attrs, BGP_EA_ID(BA_MULTI_EXIT_DISC), p0->cf->default_med) : 0;
+
+  uint j = 1;
+  for (uint i = 1; i < count; i++)
+  {
+    struct bgp_proto *p = bgp_rte_proto(r[i]);
+    u32 neighbor = (p0->cf->deterministic_med || p->cf->deterministic_med) ? bgp_get_neighbor(r[i]) : 0;
+    u32 med = (p0->cf->med_metric || p->cf->med_metric) ? ea_get_int(r[i]->attrs, BGP_EA_ID(BA_MULTI_EXIT_DISC), p0->cf->default_med) : 0;
+
+    /* Same neighbor group */
+    if (neighbor == neighbor0)
+    {
+      /* Worse med, drop route */
+      if (med > med0)
+	continue;
+
+      /* Better med, reset group */
+      if (med < med0)
+      {
+	p0 = p;
+	j = index0;
+	med0 = med;
+      }
+    }
+    /* New neighbor group */
+    else
+    {
+      p0 = p;
+      index0 = j;
+      neighbor0 = neighbor;
+      med0 = med;
+    }
+
+    r[j++] = r[i];
+  }
+
+  return j;
+}
+
+static uint
+bgp_rte_mergable_after_med(const rte **r, uint count)
+{
+  if (count < 2)
+    return count;
+
+  /* Preload first route info */
+  struct bgp_proto *p0 = bgp_rte_proto(r[0]);
+  bool is_interior0 = p0->is_interior;
+  u32 igp_metric0 = p0->cf->igp_metric ? ea_get_int(r[0]->attrs, &ea_gen_local_metric, 0) : 0;
+
+  /* Inspect other candidates */
+  uint j = 1;
+  for (uint i = 1; i < count; i++)
+  {
+    struct bgp_proto *p = bgp_rte_proto(r[i]);
+    bool replace = false;
+
+    /* RFC 4271 9.1.2.2 d) Prefer external peers */
+    bool is_interior = p->is_interior;
+    if (!replace && (is_interior > is_interior0))
+      continue;
+    if (is_interior < is_interior0)
+      replace = true;
+
+    /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
+    u32 igp_metric = (p0->cf->igp_metric || p->cf->igp_metric) ? ea_get_int(r[i]->attrs, &ea_gen_local_metric, 0) : 0;
+    if (!replace && (igp_metric > igp_metric0))
+      continue;
+    if (igp_metric < igp_metric0)
+      replace = true;
+
+    if (replace) {
+      /* If better, replace the best */
+      p0 = p;
+      is_interior0 = is_interior;
+      igp_metric0 = igp_metric;
+      j = 0;
+    }
+
+    /* Collect the route */
+    r[j++] = r[i];
+  }
+
+  return j;
+}
+
+uint
+bgp_rte_mergable(const rte **r, uint count)
+{
+  count = bgp_rte_mergable_before_med(r, count);
+  count = bgp_rte_mergable_med(r, count);
+  count = bgp_rte_mergable_after_med(r, count);
+
+  return count;
+}
+
+static const rte *
+bgp_rte_best_older(struct bgp_proto *np, u32 norig, const rte *new_best, const rte *old_best)
+{
+  /* RFC 5004 sec. 3 second paragraph */
+  if (np->is_interior)
+    return new_best;
+
+  /* RFC 5004 sec. 3 third paragraph */
+  u32 orig = ea_get_int(old_best->attrs, BGP_EA_ID(BA_ORIGINATOR_ID), bgp_rte_proto(old_best)->remote_id);
+  if (orig == norig)
+    return new_best;
+
+  /* RFC 5004 prefer older */
+  return old_best;
+}
+
+static uint
+rte_cllen(const rte *r)
+{
+  const eattr *a = ea_find(r->attrs, BGP_EA_ID(BA_CLUSTER_LIST));
+  return a ? int_set_get_size(a->u.ptr) : 0;
+}
+
+const rte *
+bgp_rte_best(const rte **r, u32 count, const rte *old_best)
+{
+  count = bgp_rte_mergable(r, count);
+  if (count == 0)
+    return NULL;
+  if (count == 1)
+    return r[0];
+
+  /* RFC 5004 - prefer older routes
+   * but only if they are external and from a different peer.
+   * First part: before f), is the old best route relevant and still in the set? */
+  if (!old_best)
+  {
+    struct bgp_proto *op = bgp_rte_proto(old_best);
+    if (op->is_interior || !op->cf->prefer_older)
+      old_best = NULL;
+    else
+    {
+      bool found = false;
+      for (uint i = 0; i < count; i++)
+	if (r[i] == old_best)
+	{
+	  found = true;
+	  break;
+	}
+      if (!found)
+	old_best = NULL;
+    }
+  }
+  else
+    old_best = NULL;
+
+  /* Preload first route info */
+  struct bgp_proto *p0 = bgp_rte_proto(r[0]);
+  u32 originator0 = ea_get_int(r[0]->attrs, BGP_EA_ID(BA_ORIGINATOR_ID), p0->remote_id);
+  u32 cllen0 = rte_cllen(r[0]);
+
+  /* Inspect other candidates */
+  uint j = 1;
+  for (uint i = 1; i < count; i++)
+  {
+    struct bgp_proto *p = bgp_rte_proto(r[i]);
+    bool replace = false;
+
+    /* RFC 4271 9.1.2.2. f) Compare BGP identifiers */
+    /* RFC 4456 9. a) Use ORIGINATOR_ID instead of local neighbor ID */
+    u32 originator = ea_get_int(r[i]->attrs, BGP_EA_ID(BA_ORIGINATOR_ID), p->remote_id);
+    if (!replace && (originator > originator0))
+      continue;
+    if (originator < originator0)
+      replace = true;
+
+    /* RFC 4456 9. b) Compare cluster list lengths */
+    u32 cllen = rte_cllen(r[i]);
+    if (!replace && (cllen > cllen0))
+      continue;
+    if (cllen < cllen0)
+      replace = true;
+
+    /* RFC 4271 9.1.2.2. g) Compare peer IP adresses */
+    if (!replace)
+    {
+      int r = ipa_compare(p->remote_ip, p0->remote_ip);
+      if (r > 0)
+	continue;
+      if (r < 0)
+	replace = true;
+    }
+
+    /* Internal last-resort comparison */
+    if (!replace)
+    {
+      int x = strcmp(p->p.name, p0->p.name) ?: (int)(r[i]->src->private_id - r[0]->src->private_id);
+      if (x > 0)
+	continue;
+      if (x < 0)
+	replace = true;
+    }
+
+    if (replace) {
+      /* If better, replace the best */
+      p0 = p;
+      originator0 = originator;
+      cllen0 = cllen;
+      j = 0;
+    }
+
+    /* Collect the route */
+    r[j++] = r[i];
+  }
+
+  /* Now if there is more than one route, there is something terribly wrong */
+  ASSERT_DIE(count == 1);
+  return old_best && p0->cf->prefer_older ? bgp_rte_best_older(p0, originator0, r[0], old_best) : r[0];
+}
+
 
 void
 bgp_rte_modify_stale(void *_bc)
@@ -3587,9 +3540,6 @@ bgp_get_route_info(const rte *e, byte *buf)
 
   if (!net_is_flow(e->net))
   {
-    if (e->pflags & BGP_REF_SUPPRESSED)
-      buf += bsprintf(buf, "-");
-
     if (rte_stale(e))
       buf += bsprintf(buf, "s");
 

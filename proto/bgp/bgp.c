@@ -3099,7 +3099,7 @@ done:
 
 struct rte_owner_class bgp_rte_owner_class = {
   .get_route_info = 	bgp_get_route_info,
-  .rte_better =		bgp_rte_better,
+  .rte_best =		bgp_rte_best,
   .rte_mergable =	bgp_rte_mergable,
   .rte_igp_metric =	bgp_rte_igp_metric,
 };
@@ -3119,7 +3119,6 @@ bgp_init(struct proto_config *CF)
   P->reload_routes = bgp_reload_routes;
 
   P->sources.class = &bgp_rte_owner_class;
-  P->sources.rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
 
   p->cf = cf;
   p->is_internal = (cf->local_as == cf->remote_as);

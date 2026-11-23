@@ -499,12 +499,35 @@ static_rte_better(const rte *new, const rte *old)
   return new->src->private_id < old->src->private_id;
 }
 
-static int
-static_rte_mergable(const rte *pri, const rte *sec)
+static uint
+static_rte_mergable(const rte **r, uint count)
 {
-  u32 a = ea_get_int(pri->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
-  u32 b = ea_get_int(sec->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
-  return a == b;
+  if (count < 2)
+    return count;
+
+  u32 igp_metric0 = ea_get_int(r[0]->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
+
+  uint j = 1;
+  for (uint i = 1; i < count; i++)
+  {
+    bool replace = false;
+
+    u32 igp_metric = ea_get_int(r[i]->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
+    if (!replace && (igp_metric > igp_metric0))
+      continue;
+    if (igp_metric < igp_metric0)
+      replace = true;
+
+    if (replace)
+    {
+      igp_metric0 = igp_metric;
+      j = 0;
+    }
+
+    r[j++] = r[i];
+  }
+
+  return j;
 }
 
 static void static_index_routes(struct static_config *cf);
