@@ -17,7 +17,7 @@
  *    is allocated, decrease when a head is freed
  * 
  *  Head of page containing the data (datapage)
- *  - num_full - count of allocated chunks of data. If the head is being deleted, it is increased by 1000.
+ *  - num_full - count of allocated chunks of data.
  *  - index in metapage
  *  - pointer to metapage
  *  - owned_last_leaved flag - triple flag guarding races between allocating thread and freeing thread.
@@ -124,13 +124,13 @@
  * Free a metapage
  * It is possible to remove only pages with no children.
  * 
- * 1) Keep triing to decrease num_full of parent metapage by atomic compare exchange by 1 until
- *    success or num_full == 1.
- * 2) If num_full succesfuly decreased, return.
+ * 1) Keep triing to decrease heads_count of parent metapage by atomic compare exchange by 1 until
+ *    success or heads_count == 1.
+ * 2) If heads_count succesfuly decreased, return.
  * 3) set full_or_owned for current metapage.
  *    - if full_or_owned was already set, go to 1)
  * 4) rcu_sync
  * 5) RELOAD POINTER TO THE PAGE
- * 6) if num_full > 0 leave
- * 7) set exist to 0, free the page and repeate on parent if num_full is zero
+ * 6) if heads_count > 0 leave
+ * 7) set exist to 0, free the page and repeate on parent if heads_count is zero
  */
