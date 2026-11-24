@@ -5261,7 +5261,6 @@ static int
 rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rtable_config *old)
 {
   if ((new->addr_type != old->addr_type) ||
-      (new->sorted != old->sorted) ||
       (new->trie_used != old->trie_used))
     return 0;
 

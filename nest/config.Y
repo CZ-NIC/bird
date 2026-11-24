@@ -256,11 +256,11 @@ table_start: net_type TABLE symbol {
 
 table_sorted:
    /* empty */
- | SORTED { this_table->sorted = 1; }
+ | SORTED { cf_warn("The sorted table option has been deprecated, does nothing and is no longer needed for secondary export."); }
  ;
 
 table_opt:
-   SORTED bool { this_table->sorted = $2; }
+   SORTED bool { cf_warn("The sorted table option has been deprecated, does nothing and is no longer needed for secondary export."); }
  | DEBUG debug_mask { this_table->debug = $2; }
  | TRIE bool {
      if (!net_val_match(this_table->addr_type, NB_IP | NB_VPN | NB_ROA | NB_IP6_SADR))
