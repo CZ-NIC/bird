@@ -1566,7 +1566,7 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     /* Update RA mode */
     if (c->add_path_tx)
       c->c.ra_mode = RA_ANY;
-    else if (c->cf->secondary)
+    else if (c->c.secondary_mode)
       c->c.ra_mode = RA_ACCEPTED;
     else
       c->c.ra_mode = RA_OPTIMAL;

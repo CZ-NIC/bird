@@ -18,6 +18,7 @@
 //#include "lib/lists.h"
 #include "lib/hash.h"
 #include "lib/socket.h"
+#include "filter/filter.h"
 
 struct eattr;
 
@@ -178,7 +179,6 @@ struct bgp_channel_config {
   u8 llnh_format;			/* Requested link-local next hop format (LLNH_*) */
   u8 mandatory;				/* Channel is mandatory in capability negotiation */
   u8 gw_mode;				/* How we compute route gateway from next_hop attr, see GW_* */
-  u8 secondary;				/* Accept also non-best routes (i.e. RA_ACCEPTED) */
   u8 validate;				/* Validate Flowspec per RFC 8955 (6) */
   u8 gr_able;				/* Allow full graceful restart for the channel */
   u8 llgr_able;				/* Allow full long-lived GR for the channel */
@@ -235,11 +235,6 @@ struct bgp_channel_config {
 
 #define NHP_GLOBAL		1
 #define NHP_LOCAL		2
-
-#define BGP_SECONDARY_OFF	0
-#define BGP_SECONDARY_LEGACY	1
-#define BGP_SECONDARY_BEST	2
-#define BGP_SECONDARY_ANY	3
 
 #define BGP_ADD_PATH_RX		1
 #define BGP_ADD_PATH_TX		2

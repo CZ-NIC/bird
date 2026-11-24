@@ -166,6 +166,7 @@ CF_KEYWORDS(CHECK, LINK, HOST, PREFIX)
 CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, ROA, DIGEST, ROUTE, REFRESH, SETTLE, TIME, GC, THRESHOLD, PERIOD)
 CF_KEYWORDS(MPLS_LABEL, MPLS_POLICY, MPLS_CLASS)
 CF_KEYWORDS(ASPA_PROVIDERS)
+CF_KEYWORDS(SECONDARY, BEST, ANY)
 
 /* For r_args_channel */
 CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC, ASPA)
@@ -187,7 +188,7 @@ CF_ENUM(T_ENUM_NET_EVPN_TYPE, NET_EVPN_, EAD, MAC, IMET, ES)
 %type <s> optproto
 %type <ra> r_args
 %type <sd> sym_args
-%type <i> proto_start debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type net_type_base tos password_algorithm
+%type <i> proto_start debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type net_type_base tos password_algorithm secondary_kind
 %type <ps> proto_patt proto_patt2
 %type <cc> channel_start proto_channel nbrs_channel_start nbrs_channel
 %type <cl> limit_spec
@@ -372,6 +373,11 @@ channel_item_:
      this_channel->out_filter = $4;
    }
  | EXPORT imexport { this_channel->out_filter = $2; }
+ | SECONDARY bool { this_channel->secondary_mode = $2 ? CSM_LEGACY : CSM_OFF; }
+ | SECONDARY secondary_kind imexport {
+     this_channel->secondary_mode = $2;
+     this_channel->secondary_filter = $3;
+   }
  | RECEIVE LIMIT limit_spec { this_channel->rx_limit = $3; }
  | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
@@ -444,6 +450,11 @@ limit_action:
 limit_spec:
    expr limit_action { $$ = (struct channel_limit){ .limit = $1, $$.action = $2 }; }
  | OFF { $$ = (struct channel_limit){}; }
+ ;
+
+secondary_kind:
+   BEST { $$ = CSM_BEST_ONLY; }
+ | ANY  { $$ = CSM_ANY; }
  ;
 
 

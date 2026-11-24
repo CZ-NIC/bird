@@ -601,7 +601,7 @@ struct channel_config {
 
   struct proto_config *parent;		/* Where channel is defined (proto or template) */
   struct rtable_config *table;		/* Table we're attached to */
-  const struct filter *in_filter, *out_filter; /* Attached filters */
+  const struct filter *in_filter, *out_filter, *secondary_filter; /* Attached filters */
   const net_addr *out_subprefix;	/* Export only subprefixes of this net */
   int (*alt_export)(const struct rt_prefilter *, const net_addr *);	/* Use the alt export for this net */
 
@@ -613,6 +613,7 @@ struct channel_config {
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
   u8 alt_mode;				/* Mode for the alt export */
+  u8 secondary_mode;			/* Secondary best route selection behavior (CSM_*) */
   u16 preference;			/* Default route preference */
   u32 debug;				/* Debugging flags (D_*) */
   u8 copy;				/* Value from channel_config_get() is new (0) or from template (1) */
@@ -632,6 +633,7 @@ struct channel {
   rtable *table;
   const struct filter *in_filter;	/* Input filter */
   const struct filter *out_filter;	/* Output filter */
+  const struct filter *secondary_filter;	/* Output filter after secondary best route selection */
   const net_addr *out_subprefix;	/* Export only subprefixes of this net */
   struct bmap imported_map;		/* Which nets were touched by our import */
   struct bmap export_accepted_map;	/* Keeps track which routes were really exported */
@@ -678,6 +680,7 @@ struct channel {
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
   u8 alt_mode;				/* Mode for the alt export */
+  u8 secondary_mode;			/* Secondary best route selection behavior (CSM_*) */
   u16 preference;			/* Default route preference */
   u32 debug;				/* Debugging flags (D_*) */
   u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */

@@ -1892,6 +1892,9 @@ static void
 rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
 {
   const rte *old_best = NULL;
+  rte old_best0;
+
+  bool feeding = rt_net_is_feeding(&c->out_req, feed->ni->addr);
 
   /* Find old best for reference */
   for (uint i = 0; i < feed->count_routes; i++)
@@ -1910,9 +1913,6 @@ rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
       old_best = &old_best0;
     }
   }
-
-  /* Apply pre-out filter before best route selection */
-  const struct filter *filter = c->preout_filter;
 
   TMP_SAVED {
     const rte **candidates0 = tmp_allocz(feed->count_routes * sizeof *candidates0);
@@ -1942,23 +1942,25 @@ rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
 	RT_NOTIFY_DEBUG("route %u id %u has been rejected before", i, r->id);
 
       /* Calculate pre-export filter for each feasible route */
-      else if (filter && ((filter == FILTER_REJECT) ||
-			  (f_run(filter, r, 0) > F_ACCEPT)))
+      else if (export_filter(c, r, 0))
 	/* Filter rejected */
 	bmap_set(&c->export_rejected_map, r->id);
       else
 	/* Filter accepted */
-	cand[count++] = r;
+	candidates0[count++] = r;
     }
 
     const rte **candidates = tmp_alloc(count * sizeof *candidates);
     memcpy(candidates, candidates0, count * sizeof *candidates);
 
+    const struct filter *filter = c->secondary_filter;
+
     while (count > 0)
     {
       const rte *best = rte_select_best(candidates, count, NULL);
       rte b0 = *best;
-      if (export_filter(c, &b0, 0))
+      if (filter && ((filter == FILTER_REJECT) ||
+		     (f_run(filter, &b0, 0) > F_ACCEPT)))
       {
 	if (feeding || !old_best || (b0.id != old_best->id))
 	  do_rt_notify(c, feed->ni->addr, &b0, old_best);
@@ -1967,7 +1969,7 @@ rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
 	return;
       }
 
-      if (c->secondary_best)
+      if (c->secondary_mode == CSM_BEST_ONLY)
 	break;
 
       /* Drop the best route and retry */

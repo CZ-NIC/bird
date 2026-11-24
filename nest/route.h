@@ -683,6 +683,12 @@ int channel_preimport(struct rt_import_request *req, rte *new, const rte *old);
 #define RA_ANY		3		/* Announcement of any route change */
 #define RA_MERGED	4		/* Announcement of optimal route merged with next ones */
 
+/* Secondary best route selection behavior */
+#define CSM_OFF		0		/* No secondary best route selection */
+#define CSM_LEGACY	1		/* Legacy configuration kind */
+#define	CSM_BEST_ONLY	2		/* Apply secondary filter only on the best route */
+#define CSM_ANY		3		/* Apply secondary filter until a route passes */
+
 /* Return value of preexport() callback */
 #define RIC_ACCEPT	1		/* Accepted by protocol */
 #define RIC_PROCESS	0		/* Process it through import filter */
