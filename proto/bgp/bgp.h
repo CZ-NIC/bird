@@ -236,6 +236,11 @@ struct bgp_channel_config {
 #define NHP_GLOBAL		1
 #define NHP_LOCAL		2
 
+#define BGP_SECONDARY_OFF	0
+#define BGP_SECONDARY_LEGACY	1
+#define BGP_SECONDARY_BEST	2
+#define BGP_SECONDARY_ANY	3
+
 #define BGP_ADD_PATH_RX		1
 #define BGP_ADD_PATH_TX		2
 #define BGP_ADD_PATH_FULL	3

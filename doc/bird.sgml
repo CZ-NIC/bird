@@ -4088,7 +4088,7 @@ allowed in dynamic BGP instances (those configured with <cf/neighbor range/).
 
 	Recursive mode is the behavior specified by the BGP
 	standard. Direct mode is simpler, does not require any routes in a
-	routing table, and was used in older versions of BIRD, but does not
+	  routing table, and was used in older versions of BIRD, but does not
 	handle well nontrivial iBGP setups and multihop. Recursive mode is
 	incompatible with <ref id="dsc-table-sorted" name="sorted tables">. Default:
 	<cf/direct/ for direct sessions, <cf/recursive/ for multihop sessions.
@@ -4126,14 +4126,28 @@ allowed in dynamic BGP instances (those configured with <cf/neighbor range/).
         these values.
 	Default values: <cf/10 ms 100 ms/. You have to always provide both values.
 
-	<tag><label id="bgp-secondary">secondary <m/switch/</tag>
+	<tag><label id="bgp-secondary">secondary ( best | any ) <m/filter/</tag>
 	Usually, if an export filter rejects a selected route, no other route is
-	propagated for that network. This option allows to try the next route in
-	order until one that is accepted is found or all routes for that network
-	are rejected. This can be used for route servers that need to propagate
+        propagated for that network. This option instead applies the export
+        filter for all routes and calculates the best route afterwards on the
+        accepted routes. The filter specified here is applied on that best route
+        before exporting and may reject the best route again.
+
+	If <cf/any/ is specified, if this filter rejects the best route, it is
+	removed from the set and new best route is calculated, until something
+	is exported or nothing remains.
+
+	This can be used for route servers that need to propagate
 	different tables to each client but do not want to have these tables
-	explicitly (to conserve memory). This option requires that the connected
-	routing table is <ref id="dsc-table-sorted" name="sorted">. Default: off.
+	explicitly (to conserve memory).
+
+	Default: off.
+
+	<tag><label id="bgp-secondary-legacy">secondary <m/switch/</tag>
+	Deprecated option. If you were using <cf>export <m/filter/; secondary;</cf>
+	before, the equivalent configuration is now <cf>export all; secondary any <m/filter/;</cf>
+        described above. This option used to require the table to be sorted
+        which is now also deprecated. Default: off
 
 	<tag><label id="bgp-validate">validate <m/switch/</tag>
 	Apply flowspec validation procedure as described in <rfc id="8955">

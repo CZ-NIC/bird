@@ -35,7 +35,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	DYNAMIC, RANGE, NAME, DIGITS, AIGP, ORIGINATE, COST, ENFORCE,
 	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
 	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, OTC, GLOBAL, SEND, RECV, MIN, MAX,
-	TX, SIZE, WARNING,
+	TX, SIZE, WARNING, BEST, ANY,
 	AUTHENTICATION, NONE, MD5, AO, FORMAT, NATIVE, SINGLE, DOUBLE)
 
 CF_KEYWORDS(KEY, KEYS, SECRET, DEPRECATED, PREFERRED, ALGORITHM, CMAC, AES128)
@@ -440,7 +440,15 @@ bgp_channel_item:
  | MISSING LLADDR bgp_lladdr { cf_warn("%s.%s: Missing lladdr option is deprecated and ignored, remove it", this_proto->name, this_channel->name); }
  | GATEWAY DIRECT { BGP_CC->gw_mode = GW_DIRECT; }
  | GATEWAY RECURSIVE { BGP_CC->gw_mode = GW_RECURSIVE; }
- | SECONDARY bool { BGP_CC->secondary = $2; }
+ | SECONDARY bool { BGP_CC->secondary_enable = $2 ? BGP_SECONDARY_LEGACY : BGP_SECONDARY_OFF; }
+ | SECONDARY BEST imexport {
+    BGP_CC->secondary_filter = $3;
+    BGP_CC->secondary_enable = BGP_SECONDARY_BEST;
+  }
+ | SECONDARY ANY imexport {
+    BGP_CC->secondary_filter = $3;
+    BGP_CC->secondary_enable = BGP_SECONDARY_ANY;
+  }
  | VALIDATE bool {
     BGP_CC->validate = $2;
     if (BGP_SAFI(BGP_CC->afi) != BGP_SAFI_FLOW)

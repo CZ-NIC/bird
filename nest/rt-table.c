@@ -1891,82 +1891,97 @@ channel_notify_any(void *_channel)
 static void
 rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
 {
-  rte *old_best = NULL, *new_best = NULL;
-  bool feeding = rt_net_is_feeding(&c->out_req, feed->ni->addr);
-  bool idempotent = 0;
+  const rte *old_best = NULL;
 
-  RT_NOTIFY_DEBUG("%s feed for %N with %u routes", feeding ? "refeed" : "regular", feed->ni->addr, feed->count_routes);
-
+  /* Find old best for reference */
   for (uint i = 0; i < feed->count_routes; i++)
   {
     rte *r = &feed->block[i];
 
     /* Previously exported */
-    if (!old_best && bmap_test(&c->export_accepted_map, r->id))
+    if (bmap_test(&c->export_accepted_map, r->id))
     {
       RT_NOTIFY_DEBUG("route %u id %u previously exported, is old best", i, r->id);
-      old_best = r;
+      ASSERT_DIE(!old_best);
+      bmap_clear(&c->export_accepted_map, r->id);
 
-      /* Is being withdrawn */
-      if (r->flags & REF_OBSOLETE)
-	RT_NOTIFY_DEBUG("route %u id %u is also obsolete", i, r->id);
-
-      /* Is still the best and need not be refed anyway */
-      else if (!new_best && !feeding)
-      {
-	RT_NOTIFY_DEBUG("route %u id %u is also new best (idempotent)", i, r->id);
-	new_best = r;
-	idempotent = 1;
-      }
-    }
-
-    /* Unflag obsolete routes */
-    else if (r->flags & REF_OBSOLETE)
-    {
-      RT_NOTIFY_DEBUG("route %u id %u is obsolete", i, r->id);
-      bmap_clear(&c->export_rejected_map, r->id);
-    }
-
-    /* Mark invalid as rejected */
-    else if (!rte_is_valid(r))
-    {
-      RT_NOTIFY_DEBUG("route %u id %u is invalid", i, r->id);
-      bmap_set(&c->export_rejected_map, r->id);
-    }
-
-    /* Already rejected */
-    else if (!feeding && bmap_test(&c->export_rejected_map, r->id))
-      RT_NOTIFY_DEBUG("route %u id %u has been rejected before", i, r->id);
-
-    /* No new best route yet and this is a valid candidate */
-    else if (!new_best)
-    {
-      /* This branch should not be executed if this route is old best */
-      ASSERT_DIE(feeding || (r != old_best));
-
-      /* Have no new best route yet, try this route not seen before */
-      if (export_filter(c, r, 0))
-        new_best = r;
-      else
-	bmap_set(&c->export_rejected_map, r->id);
-
-      RT_NOTIFY_DEBUG("route %u id %u is a new_best candidate %s", i, r->id,
-	  new_best ? "and is accepted" : "but got rejected");
-    }
-
-    /* Just a debug message for the last case */
-    else
-    {
-      RT_NOTIFY_DEBUG("route %u id %u is suboptimal, not checking", i, r->id);
+      /* Create a local copy */
+      old_best0 = *r;
+      old_best = &old_best0;
     }
   }
 
-  /* Nothing to export */
-  if (!idempotent && (new_best || old_best))
-    do_rt_notify(c, feed->ni->addr, new_best, old_best);
-  else
-  {
-    RT_NOTIFY_DEBUG("nothing to export for %N", feed->ni->addr);
+  /* Apply pre-out filter before best route selection */
+  const struct filter *filter = c->preout_filter;
+
+  TMP_SAVED {
+    const rte **candidates0 = tmp_allocz(feed->count_routes * sizeof *candidates0);
+    uint count = 0;
+
+    for (uint i = 0; i < feed->count_routes; i++)
+    {
+      rte *r = &feed->block[i];
+
+      /* Unflag obsolete routes */
+      if (r->flags & REF_OBSOLETE)
+      {
+	RT_NOTIFY_DEBUG("route %u id %u is obsolete", i, r->id);
+	bmap_clear(&c->export_rejected_map, r->id);
+	bmap_clear(&c->export_accepted_map, r->id);
+      }
+
+      /* Mark invalid as rejected */
+      else if (!rte_is_valid(r))
+      {
+	RT_NOTIFY_DEBUG("route %u id %u is invalid", i, r->id);
+	bmap_set(&c->export_rejected_map, r->id);
+      }
+
+      /* Already rejected */
+      else if (!feeding && bmap_test(&c->export_rejected_map, r->id))
+	RT_NOTIFY_DEBUG("route %u id %u has been rejected before", i, r->id);
+
+      /* Calculate pre-export filter for each feasible route */
+      else if (filter && ((filter == FILTER_REJECT) ||
+			  (f_run(filter, r, 0) > F_ACCEPT)))
+	/* Filter rejected */
+	bmap_set(&c->export_rejected_map, r->id);
+      else
+	/* Filter accepted */
+	cand[count++] = r;
+    }
+
+    const rte **candidates = tmp_alloc(count * sizeof *candidates);
+    memcpy(candidates, candidates0, count * sizeof *candidates);
+
+    while (count > 0)
+    {
+      const rte *best = rte_select_best(candidates, count, NULL);
+      rte b0 = *best;
+      if (export_filter(c, &b0, 0))
+      {
+	if (feeding || !old_best || (b0.id != old_best->id))
+	  do_rt_notify(c, feed->ni->addr, &b0, old_best);
+
+	bmap_set(&c->export_accepted_map, b0.id);
+	return;
+      }
+
+      if (c->secondary_best)
+	break;
+
+      /* Drop the best route and retry */
+      count--;
+      for (int i = 0; i < count; i++)
+	if (candidates0[i] == best)
+	  candidates[i] = candidates0[count];
+	else
+	  candidates[i] = candidates0[i];
+    }
+
+    /* Nothing passed */
+    if (old_best)
+      do_rt_notify(c, feed->ni->addr, NULL, old_best);
   }
 }
 
