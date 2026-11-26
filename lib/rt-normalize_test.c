@@ -127,9 +127,9 @@ t_normalize_two_layers(void)
 static int
 normalize_two_leave_last(void)
 {
-  struct ea_list *eal1 = xmalloc(sizeof(struct ea_list) + 4 * sizeof(eattr));
-  struct ea_list *eal2 = xmalloc(sizeof(struct ea_list) + 5 * sizeof(eattr));
-  struct ea_list *base = xmalloc(sizeof(struct ea_list) + 4 * sizeof(eattr));
+  struct ea_list *eal1 = tmp_allocz(sizeof(struct ea_list) + 4 * sizeof(eattr));
+  struct ea_list *eal2 = tmp_allocz(sizeof(struct ea_list) + 5 * sizeof(eattr));
+  struct ea_list *base = tmp_allocz(sizeof(struct ea_list) + 4 * sizeof(eattr));
 
   struct nexthop_adata nhad = NEXTHOP_DEST_LITERAL(13);
   base->attrs[0] = EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, &nhad.ad); // changes
@@ -165,6 +165,7 @@ normalize_two_leave_last(void)
 
   base->count = 4;
   base->next = NULL;
+  ASSERT_DIE(base->stored == 0);  /* Tame compiler warnings */
   base = ea_lookup(base, 0, EALS_CUSTOM);
 
   eal1->count = 4;
