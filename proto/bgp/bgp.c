@@ -219,6 +219,13 @@ bgp_default_listen_request(struct bgp_proto *p)
   struct bgp_listen_request *req = ralloc(p->p.persistent_pool, &bgp_listen_request_class);
   struct bgp_socket_params *par = &req->params;
 
+  /* HACK: the listening request needs to be freed just before the protocol
+   * is cleaned up. We'll fix that in a systematic way by introducing actually
+   * two free hooks to resources. Until then, we simply move the request
+   * to the very beginning of its respective resource pool. */
+  resource_rem_node(&p->p.persistent_pool->inside, &req->r);
+  resource_add_head(&p->p.persistent_pool->inside, &req->r);
+
   par->iface = p->cf->strict_bind ? p->cf->iface : NULL;
   par->vrf = p->p.vrf;
   par->addr = p->cf->strict_bind && ipa_nonzero(p->cf->local_ip) ? p->cf->local_ip :
