@@ -29,6 +29,7 @@ struct resmem {
 #define TLIST_ITEM n
 #define TLIST_WANT_WALK
 #define TLIST_WANT_ADD_TAIL
+#define TLIST_WANT_ADD_HEAD
 #define TLIST_WANT_UPDATE_NODE
 
 typedef struct resource {
