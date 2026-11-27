@@ -325,7 +325,7 @@ lfjour_register(struct lfjour *j, struct lfjour_recipient *r)
 
   lfjour_recipient_add_tail(&j->recipients, r);
 
-  if (j->issued_tokens < j->max_tokens)
+  if (atomic_load_explicit(&j->issued_tokens, memory_order_acquire) < j->max_tokens)
   {
     /* Cleanup hook does not run, so we are sure j->issued_tokens is not increasing */
     atomic_fetch_add_explicit(&j->issued_tokens, 1, memory_order_acq_rel);
