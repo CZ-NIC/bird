@@ -937,6 +937,16 @@ bfd_request_session(pool *p, ip_addr addr, ip_addr local,
   }
 
   struct bfd_request_ref *rr = ralloc(p, &bfd_request_ref_class);
+
+  /* HACK: the BFD request is often allocated from the same pool as the
+   * notification callback. It needs to be freed before the callback.
+   *
+   * We'll fix that in a systematic way by introducing actually two free
+   * hooks to resources. Until then, we simply move the request reference
+   * to the very beginning of its respective resource pool. */
+  resource_rem_node(&p->inside, &rr->r);
+  resource_add_head(&p->inside, &rr->r);
+
   rr->req = req;
   return rr;
 }
