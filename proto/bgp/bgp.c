@@ -422,7 +422,10 @@ bgp_listen_free(resource *_req)
 {
   SKIP_BACK_DECLARE(struct bgp_listen_request, req, r, _req);
 
-  ASSERT_DIE(birdloop_inside(req->p->p.loop));
+  /* Can't check for regular birdloop_inside(), this may be called
+   * from birdloop_free() on final protocol shutdown */
+  ASSERT_DIE(DG_IS_LOCKED(birdloop_domain(req->p->p.loop)));
+
   bgp_listen_unregister(req->p, req);
 }
 
