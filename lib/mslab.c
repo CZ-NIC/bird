@@ -628,7 +628,7 @@ msl_alloc(mslab *s)
 
     /* Set the thread head info */
     h->mslab = s;
-    h->next = NULL;
+    atomic_store_explicit(&h->next, NULL, memory_order_relaxed);
     atomic_store_explicit(&h->num_full, 0, memory_order_relaxed);
     memset(&h->used_bits, 0, s->head_bitfield_len * sizeof (u32));
 
